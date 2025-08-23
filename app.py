@@ -4,7 +4,7 @@ import re
 import os
 
 # --- Setup Gemini ---
-API_KEY = os.environ["API_KEY"]  # replace with your Gemini key
+API_KEY = st.secrets["API_KEY"]  # replace with your Gemini key
 genai.configure(api_key=API_KEY)
 
 model = genai.GenerativeModel("gemini-1.5-flash")
