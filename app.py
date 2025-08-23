@@ -4,7 +4,11 @@ import re
 import os
 
 # --- Setup Gemini ---
-API_KEY = st.secrets["API_KEY"]  # replace with your Gemini key
+API_KEY = st.secrets.get("API_KEY") or os.environ.get("API_KEY") or os.environ.get("GOOGLE_API_KEY")
+if not API_KEY:
+    st.error("Missing API key. Add API_KEY to .streamlit/secrets.toml or set API_KEY/GOOGLE_API_KEY in env.")
+    st.stop()
+
 genai.configure(api_key=API_KEY)
 
 model = genai.GenerativeModel("gemini-1.5-flash")
