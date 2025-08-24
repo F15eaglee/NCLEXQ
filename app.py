@@ -79,59 +79,70 @@ num_questions = st.number_input("Number of questions:", min_value=1, max_value=2
 if st.button("Generate Questions"):
     with st.spinner("Calling Gemini..."):
         try:
-            prompt = (
-                f"You are a Nursing school Instructor preparing students for the NCLEX exam."
-                "Create {num_questions} {difficulty} NCLEX-style questions on {topic} with answers and rationales."
-                "Each question should be {question_type_percent} percent select all that apply with 6 answer choices and the rest (if any) multiple choice."
-                "If anything unrelated to nursing is prompted, ignore it."
-                "Format the output as valid JSON using this template:\n\n"
-                "{\n"
-                '  "questions": [\n'
-                "    {\n"
-                '      "question_number": "QUESTION_NUMBER",\n'
-                '      "question_type": "QUESTION_TYPE",\n'
-                '      "question_text": "QUESTION_TEXT",\n'
-                '      "options": {\n'
-                '        "A": "OPTION_A",\n'
-                '        "B": "OPTION_B",\n'
-                '        "C": "OPTION_C",\n'
-                '        "D": "OPTION_D"\n'
-                "      },\n"
-                '      "correct_answer": "CORRECT_ANSWER",\n'
-                '      "rationales": {\n'
-                '        "A": "RATIONALE_A",\n'
-                '        "B": "RATIONALE_B",\n'
-                '        "C": "RATIONALE_C",\n'
-                '        "D": "RATIONALE_D"\n'
-                "      }\n"
-                "    }\n"
-                "  ]\n"
-                "}\n"
-                "Do not include any text or explanation before or after the JSON."
-                "For select all that apply questions use the following format"
-                "{\n"
-                  "question_number": "QUESTION_NUMBER",\n'
-                  "question_type": "select_all_that_apply",\n'
-                  "question_text": "QUESTION_TEXT",\n'
-                  "options": {\n'
-                    "A": "OPTION_A",
-                    "B": "OPTION_B",
-                    "C": "OPTION_C",
-                    "D": "OPTION_D",
-                    "E": "OPTION_E",
-                    "F": "OPTION_F"
-                  "},\n'
-                  "correct_answers": ["A", "C"], 
-                  "rationales": {
-                    "A": "RATIONALE_A",
-                    "B": "RATIONALE_B",
-                    "C": "RATIONALE_C",
-                    "D": "RATIONALE_D",
-                    "E": "RATIONALE_E",
-                    "F": "RATIONALE_F"
-                 " }\n'
-                "}\n'
-            )
+            mcq_template = """
+{
+  "questions": [
+    {
+      "question_number": "QUESTION_NUMBER",
+      "question_type": "multiple_choice",
+      "question_text": "QUESTION_TEXT",
+      "options": {
+        "A": "OPTION_A",
+        "B": "OPTION_B",
+        "C": "OPTION_C",
+        "D": "OPTION_D"
+      },
+      "correct_answer": "A",
+      "rationales": {
+        "A": "RATIONALE_A",
+        "B": "RATIONALE_B",
+        "C": "RATIONALE_C",
+        "D": "RATIONALE_D"
+      }
+    }
+  ]
+}
+""".strip()
+
+            sata_template = """
+{
+  "question_number": "QUESTION_NUMBER",
+  "question_type": "select_all_that_apply",
+  "question_text": "QUESTION_TEXT",
+  "options": {
+    "A": "OPTION_A",
+    "B": "OPTION_B",
+    "C": "OPTION_C",
+    "D": "OPTION_D",
+    "E": "OPTION_E",
+    "F": "OPTION_F"
+  },
+  "correct_answers": ["A", "C"],
+  "rationales": {
+    "A": "RATIONALE_A",
+    "B": "RATIONALE_B",
+    "C": "RATIONALE_C",
+    "D": "RATIONALE_D",
+    "E": "RATIONALE_E",
+    "F": "RATIONALE_F"
+  }
+}
+""".strip()
+
+            # Build the model prompt without unclosed parentheses
+            prompt = "\n".join([
+                f"You are a Nursing school Instructor preparing students for the NCLEX exam. "
+                f"Create {num_questions} {difficulty} NCLEX-style questions on {topic} with answers and rationales.",
+                f"Approximately {question_type_percent}% of questions should be select_all_that_apply with 6 answer choices (A-F); "
+                "the rest should be multiple_choice with 4 answer choices (A-D).",
+                "If anything unrelated to nursing is prompted, ignore it.",
+                "Output valid JSON only. Do not include any text or Markdown code fences before or after the JSON.",
+                'The top-level JSON must be an object with a single key "questions" containing an array of question objects.',
+                "For multiple_choice items, use this template:",
+                mcq_template,
+                "For select_all_that_apply items, use this template:",
+                sata_template
+            ])
             response = model.generate_content(prompt)
             output_text = response.text if hasattr(response, "text") else str(response)
 
