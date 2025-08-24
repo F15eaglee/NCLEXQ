@@ -69,7 +69,7 @@ num_questions = st.number_input("Number of questions:", min_value=1, max_value=2
 if st.button("Generate Questions"):
     with st.spinner("Calling Gemini..."):
         try:
-            prompt = f"Create {num_questions} NCLEX-style multiple choice questions on {topic} with answers and rationales."
+            prompt = f"Create {num_questions} NCLEX-style multiple choice questions on {topic} with answers and rationales. Format the output as JSON."
             response = model.generate_content(prompt)
             output_text = response.text if hasattr(response, "text") else str(response)
 
