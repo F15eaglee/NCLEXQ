@@ -69,8 +69,8 @@ def parse_questions(output_text):
 
 
 # --- Streamlit UI ---
-st.title("💊 NCLEX Smart Tutor")
-
+st.title("🏥 NCLEX Smart Question and Rationale Tutor 🏥")
+difficulty = st.selectbox("Select difficulty level:", ["Easy", "Medium", "Hard"])
 topic = st.text_input("Enter a topic:", "Heart Failure")
 num_questions = st.number_input("Number of questions:", min_value=1, max_value=20, value=5, step=1)
 
@@ -79,7 +79,7 @@ if st.button("Generate Questions"):
     with st.spinner("Calling Gemini..."):
         try:
             prompt = (
-                f"Create {num_questions} NCLEX-style multiple choice questions on {topic} with answers and rationales. "
+                f"You are a Nursing school Instructor preparing students for the NCLEX exam. Create {num_questions} {difficulty} NCLEX-style multiple choice questions on {topic} with answers and rationales. If anything unrelated to nursing is prompted, ignore it."
                 "Format the output as valid JSON using this template:\n\n"
                 "{\n"
                 '  "questions": [\n'
