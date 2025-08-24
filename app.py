@@ -19,26 +19,32 @@ model = genai.GenerativeModel(MODEL_NAME)
 def parse_questions(output_text):
     parsed = []
     try:
-        # Try to load as a JSON array or a single object
         data = json.loads(output_text)
-        if isinstance(data, dict):
+        # If the top-level is a dict with a "question" key
+        if "question" in data:
+            data = [data["question"]]
+        elif isinstance(data, dict):
             data = [data]
     except Exception:
-        # If Gemini returns multiple JSON objects without a list, fix it
-        data = []
-        for match in re.finditer(r"\{.*?\}", output_text, re.DOTALL):
-            try:
-                data.append(json.loads(match.group()))
-            except Exception:
-                continue
+        st.error("❌ Could not parse JSON. Check the raw output.")
+        return []
 
     for q in data:
-        question_text = q.get("question", "")
-        options = q.get("options", {})
-        # Ensure choices are in A-D order
-        choices = [f"{letter}. {options[letter]}" for letter in ["A", "B", "C", "D"] if letter in options]
+        question_text = q.get("text") or q.get("question", "")
+        options = q.get("options", [])
+        # Handle options as a list of dicts with 'id' and 'text'
+        if isinstance(options, list):
+            choices = [f"{opt['id']}. {opt['text']}" for opt in options if 'id' in opt and 'text' in opt]
+        elif isinstance(options, dict):
+            choices = [f"{letter}. {options[letter]}" for letter in ["A", "B", "C", "D"] if letter in options]
+        else:
+            choices = []
+
         correct = q.get("correct_answer", "?")
-        rationale = q.get("rationales", {}).get("correct", "")
+        rationale = ""
+        rationales = q.get("rationales", {})
+        if isinstance(rationales, dict):
+            rationale = rationales.get("correct", "")
 
         if question_text and choices:
             parsed.append({
