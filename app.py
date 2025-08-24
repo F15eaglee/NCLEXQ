@@ -66,7 +66,32 @@ num_questions = st.number_input("Number of questions:", min_value=1, max_value=2
 if st.button("Generate Questions"):
     with st.spinner("Calling Gemini..."):
         try:
-            prompt = f"Create {num_questions} NCLEX-style multiple choice questions on {topic} with answers and rationales. Format the output as JSON."
+            prompt = (
+                f"Create {num_questions} NCLEX-style multiple choice questions on {topic} with answers and rationales. "
+                "Format the output as valid JSON using this template:\n\n"
+                "{\n"
+                '  "questions": [\n'
+                "    {\n"
+                '      "question_number": "QUESTION_NUMBER",\n'
+                '      "question_text": "QUESTION_TEXT",\n'
+                '      "options": {\n'
+                '        "A": "OPTION_A",\n'
+                '        "B": "OPTION_B",\n'
+                '        "C": "OPTION_C",\n'
+                '        "D": "OPTION_D"\n'
+                "      },\n"
+                '      "correct_answer": "CORRECT_ANSWER",\n'
+                '      "rationales": {\n'
+                '        "A": "RATIONALE_A",\n'
+                '        "B": "RATIONALE_B",\n'
+                '        "C": "RATIONALE_C",\n'
+                '        "D": "RATIONALE_D"\n'
+                "      }\n"
+                "    }\n"
+                "  ]\n"
+                "}\n"
+                "Do not include any text or explanation before or after the JSON."
+            )
             response = model.generate_content(prompt)
             output_text = response.text if hasattr(response, "text") else str(response)
 
