@@ -133,7 +133,7 @@ if st.button("Generate Questions"):
             prompt = "\n".join([
                 f"You are a Nursing school Instructor preparing students for the NCLEX exam. "
                 f"Create {num_questions} {difficulty} NCLEX-style questions on {topic} with answers and rationales.",
-                f"Approximately {question_type_percent}% of questions should be select_all_that_apply with 6 answer choices (A-F); "
+                f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F); "
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
                 "If anything unrelated to nursing is prompted, ignore it.",
                 "Output valid JSON only. Do not include any text or Markdown code fences before or after the JSON.",
