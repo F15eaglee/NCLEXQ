@@ -4,9 +4,14 @@ import re
 import os
 
 # --- Setup Gemini ---
-API_KEY = os.environ.get("API_KEY") or "YOUR_KEY_HERE"
+API_KEY = st.secrets.get("API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("API_KEY")
+if not API_KEY or API_KEY == "YOUR_KEY_HERE":
+    st.error("Missing API key. Add API_KEY to .streamlit/secrets.toml or set GOOGLE_API_KEY/API_KEY in env.")
+    st.stop()
+
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
+model = genai.GenerativeModel(MODEL_NAME)
 
 
 # --- Parse Gemini output ---
@@ -84,8 +89,8 @@ if "questions" in st.session_state and st.session_state.questions and not st.ses
     st.markdown(f"### Q{q_index+1}: {question['q']}")
 
     # Answer buttons
-    for choice in question["choices"]:
-        if st.button(choice, key=f"choice_{q_index}_{choice}"):
+    for i, choice in enumerate(question["choices"]):
+        if st.button(choice, key=f"choice_{q_index}_{i}"):
             st.session_state.selected = choice[0]
             st.session_state.answered = True
 
