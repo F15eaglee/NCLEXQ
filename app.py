@@ -110,9 +110,9 @@ if st.button("Generate Questions"):
                 "Do not include any text or explanation before or after the JSON."
                 "For select all that apply questions use the following format"
                 "{\n"
-                  "question_number": "QUESTION_NUMBER",
-                  "question_type": "select_all_that_apply",
-                  "question_text": "QUESTION_TEXT",
+                  "question_number": "QUESTION_NUMBER",\n'
+                  "question_type": "select_all_that_apply",\n'
+                  "question_text": "QUESTION_TEXT",\n'
                   "options": {\n'
                     "A": "OPTION_A",
                     "B": "OPTION_B",
