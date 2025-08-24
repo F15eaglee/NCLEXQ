@@ -36,33 +36,59 @@ def parse_questions(output_text):
         return []
 
     for q in data["questions"]:
-        question_text = q.get("question_text", "").strip()
+        question_text = (q.get("question_text") or "").strip()
         options = q.get("options", {}) or {}
-        correct = (q.get("correct_answer") or "?").strip().upper()
-        rationales = q.get("rationales", {}) or {}
+        qt_raw = (q.get("question_type") or "").strip().lower()
 
-        # Build choices in A-D order if present
-        choices = [f"{letter}. {options[letter]}" for letter in ["A", "B", "C", "D"] if letter in options]
+        # Determine letters present in options in order A..H
+        all_letters = [chr(c) for c in range(ord("A"), ord("H") + 1)]
+        letters = [L for L in all_letters if L in options]
 
-        # Build a full A-D rationale map; fallback to 'correct' key if needed
-        if {"A", "B", "C", "D"} & set(rationales.keys()):
-            rationales_map = {letter: (rationales.get(letter, "") or "").strip() for letter in ["A", "B", "C", "D"]}
+        # Build display choices
+        choices = [f"{L}. {options[L]}" for L in letters]
+
+        # Determine if SATA
+        is_sata_by_type = qt_raw in {
+            "sata",
+            "select_all_that_apply",
+            "select all that apply",
+            "select_all",
+        }
+        is_sata_by_schema = isinstance(q.get("correct_answers"), list)
+        is_sata = is_sata_by_type or is_sata_by_schema
+
+        # Collect correct answers
+        correct_set = set()
+        if is_sata:
+            for ans in (q.get("correct_answers") or []):
+                if isinstance(ans, str):
+                    L = ans.strip().upper()
+                    if L in letters:
+                        correct_set.add(L)
         else:
-            # Only 'correct' rationale provided
-            rationales_map = {letter: "" for letter in ["A", "B", "C", "D"]}
-            if "correct" in rationales and correct in ["A", "B", "C", "D"]:
-                rationales_map[correct] = (rationales.get("correct", "") or "").strip()
+            ca = (q.get("correct_answer") or "").strip().upper()
+            if ca in letters:
+                correct_set.add(ca)
 
-        # Keep single 'rationale' for backward compatibility (correct option only)
-        rationale = rationales_map.get(correct, "")
+        # Rationales map for available letters
+        rationales = q.get("rationales", {}) or {}
+        rationales_map = {L: (rationales.get(L, "") or "").strip() for L in letters}
 
-        if question_text and choices:
+        # Fallback: some payloads may include a single 'correct' rationale
+        if "correct" in rationales and len(correct_set) == 1:
+            only = next(iter(correct_set))
+            if not rationales_map.get(only):
+                rationales_map[only] = (rationales.get("correct", "") or "").strip()
+
+        qtype = "sata" if is_sata else "mcq"
+
+        if question_text and choices and correct_set:
             parsed.append({
                 "q": question_text,
-                "choices": choices,
-                "correct": correct,
-                "rationale": rationale,
-                "rationales": rationales_map
+                "type": qtype,
+                "choices": choices,          # ["A. ...", "B. ...", ...]
+                "correct_set": sorted(list(correct_set)),  # keep stable order
+                "rationales": rationales_map  # { "A": "...", ... }
             })
 
     return parsed
@@ -133,7 +159,7 @@ if st.button("Generate Questions"):
             prompt = "\n".join([
                 f"You are a Nursing school Instructor preparing students for the NCLEX exam. "
                 f"Create {num_questions} {difficulty} NCLEX-style questions on {topic} with answers and rationales.",
-                f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F); "
+                f"{question_type_percent}% of questions should be select_all_that_apply with 6 answer choices (A-F); "
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
                 "If anything unrelated to nursing is prompted, ignore it.",
                 "Output valid JSON only. Do not include any text or Markdown code fences before or after the JSON.",
@@ -150,7 +176,7 @@ if st.button("Generate Questions"):
             st.session_state.questions = questions
             st.session_state.q_index = 0
             st.session_state.answered = False
-            st.session_state.selected = None
+            st.session_state.selected_letters = []
             st.session_state.raw_output = output_text
             st.session_state.score = 0
             st.session_state.scored_questions = {}
@@ -176,42 +202,66 @@ if "questions" in st.session_state and st.session_state.questions and not st.ses
 
     st.markdown(f"### Q{q_index+1}: {question['q']}")
 
-    # Answer buttons
-    for i, choice in enumerate(question["choices"]):
-        if st.button(choice, key=f"choice_{q_index}_{i}"):
-            st.session_state.selected = choice[0]  # first letter A-D
+    # Build a map from letter -> option text and ordered letters from choices
+    choice_map = {}
+    order_letters = []
+    for c in question["choices"]:
+        m = re.match(r"([A-Z])\.\s*(.*)", c)
+        if m:
+            L = m.group(1)
+            T = m.group(2)
+            order_letters.append(L)
+            choice_map[L] = T
+
+    correct_set = set(question.get("correct_set", []))
+    selected_set = set(st.session_state.get("selected_letters", []) or [])
+
+    # Render inputs based on type
+    if question.get("type") == "sata":
+        st.caption("Select all that apply.")
+        # Checkboxes for each option
+        current_selection = []
+        for L in order_letters:
+            checked = st.checkbox(f"{L}. {choice_map[L]}", key=f"sata_{q_index}_{L}")
+            if checked:
+                current_selection.append(L)
+
+        # Submit button to lock in the answer
+        if st.button("Submit", key=f"submit_{q_index}") and current_selection:
+            st.session_state.selected_letters = current_selection
             st.session_state.answered = True
+    else:
+        # Multiple Choice: buttons for single selection
+        for i, L in enumerate(order_letters):
+            if st.button(f"{L}. {choice_map[L]}", key=f"choice_{q_index}_{i}"):
+                st.session_state.selected_letters = [L]
+                st.session_state.answered = True
 
     # After answer selected
     if st.session_state.answered:
+        selected_set = set(st.session_state.get("selected_letters", []) or [])
+        # Score once per question
         if not st.session_state.scored_questions.get(q_index, False):
-            if st.session_state.selected == question["correct"]:
-                st.success(f"✅ Correct! The answer is {question['correct']}.")
+            if selected_set == correct_set:
+                st.success(f"✅ Correct! Correct answers: {', '.join(sorted(correct_set))}.")
                 st.session_state.score += 1
             else:
-                st.error(f"❌ Incorrect. The correct answer is {question['correct']}.")
+                st.error(f"❌ Incorrect. Correct answers: {', '.join(sorted(correct_set))}.")
             st.session_state.scored_questions[q_index] = True
 
-        # Show rationales for all options
+        # Show rationales for all options present
         st.markdown("#### 💡 Rationales")
-        # Build a map from letter -> option text
-        choice_map = {}
-        for c in question["choices"]:
-            m = re.match(r"([A-D])\.\s*(.*)", c)
-            if m:
-                choice_map[m.group(1)] = m.group(2)
-
-        for letter in ["A", "B", "C", "D"]:
-            if letter not in choice_map:
-                continue
-            text = choice_map[letter]
-            expl = (question.get("rationales", {}) or {}).get(letter, "")
-            if letter == question["correct"]:
-                st.success(f"{letter}. {text}\n\n💡 {expl}" if expl else f"{letter}. {text}")
-            elif letter == st.session_state.selected:
-                st.warning(f"{letter}. {text}\n\n💡 {expl}" if expl else f"{letter}. {text}")
+        for L in order_letters:
+            text = choice_map[L]
+            expl = (question.get("rationales", {}) or {}).get(L, "")
+            if L in correct_set and L in selected_set:
+                st.success(f"{L}. {text}\n\n💡 {expl}" if expl else f"{L}. {text}")
+            elif L in correct_set and L not in selected_set:
+                st.info(f"{L}. {text}\n\n💡 {expl}" if expl else f"{L}. {text}")
+            elif L in selected_set and L not in correct_set:
+                st.warning(f"{L}. {text}\n\n💡 {expl}" if expl else f"{L}. {text}")
             else:
-                st.info(f"{letter}. {text}\n\n💡 {expl}" if expl else f"{letter}. {text}")
+                st.info(f"{L}. {text}\n\n💡 {expl}" if expl else f"{L}. {text}")
 
         st.write(f"📊 Score: {st.session_state.score}/{q_index+1}")
 
@@ -220,7 +270,7 @@ if "questions" in st.session_state and st.session_state.questions and not st.ses
             if st.button("➡️ Next Question"):
                 st.session_state.q_index += 1
                 st.session_state.answered = False
-                st.session_state.selected = None
+                st.session_state.selected_letters = []
                 st.rerun()
         else:
             st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)}")
