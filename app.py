@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import re
 import os
+import json
 
 # --- Setup Gemini ---
 API_KEY = st.secrets.get("API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("API_KEY")
@@ -17,45 +18,35 @@ model = genai.GenerativeModel(MODEL_NAME)
 # --- Parse Gemini output (for format with rationale and single-line choices) ---
 def parse_questions(output_text):
     parsed = []
-    # Split by "Question X"
-    blocks = re.split(r"(?i)(?=Question\s*\d+)", output_text)
-    for block in blocks:
-        block = block.strip()
-        if not block:
-            continue
+    try:
+        # Try to load as a JSON array or a single object
+        data = json.loads(output_text)
+        if isinstance(data, dict):
+            data = [data]
+    except Exception:
+        # If Gemini returns multiple JSON objects without a list, fix it
+        data = []
+        for match in re.finditer(r"\{.*?\}", output_text, re.DOTALL):
+            try:
+                data.append(json.loads(match.group()))
+            except Exception:
+                continue
 
-        # Question text up to first choice
-        q_match = re.search(r"Question\s*\d+\s*\n*(.*?)(?:\nA\.|\nA:)", block, re.DOTALL)
-        question_text = q_match.group(1).strip() if q_match else None
-
-        # Extract only the choices section (from first A. to "Answer:")
-        choices_section = re.search(r"(A\..*?)(?:\nAnswer\s*[:\-]?\s*[A-D])", block, re.DOTALL | re.IGNORECASE)
-        choices = []
-        if choices_section:
-            # Split choices section into lines, keep only those starting with A./B./C./D.
-            lines = choices_section.group(1).splitlines()
-            for line in lines:
-                m = re.match(r"([A-D])\.\s*(.+)", line.strip())
-                if m:
-                    letter, text = m.groups()
-                    choices.append(f"{letter}. {text.strip()}")
-
-        # Correct answer
-        a_match = re.search(r"Answer\s*[:\-]?\s*([A-D])", block, re.IGNORECASE)
-        correct = a_match.group(1).upper() if a_match else "?"
-
-        # Rationale: everything after "Rationale:"
-        rationale_match = re.search(r"Rationale\s*[:\-]?\s*(.*)", block, re.DOTALL | re.IGNORECASE)
-        rationale_text = rationale_match.group(1).strip() if rationale_match else ""
+    for q in data:
+        question_text = q.get("question", "")
+        options = q.get("options", {})
+        # Ensure choices are in A-D order
+        choices = [f"{letter}. {options[letter]}" for letter in ["A", "B", "C", "D"] if letter in options]
+        correct = q.get("correct_answer", "?")
+        rationale = q.get("rationales", {}).get("correct", "")
 
         if question_text and choices:
             parsed.append({
                 "q": question_text,
                 "choices": choices,
                 "correct": correct,
-                "rationale": rationale_text
+                "rationale": rationale
             })
-
     return parsed
 
 
