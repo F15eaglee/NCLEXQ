@@ -14,30 +14,40 @@ MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
 model = genai.GenerativeModel(MODEL_NAME)
 
 
-# --- Parse Gemini output ---
+# --- Parse Gemini output for 2.5 Flash single-line choices ---
 def parse_questions(output_text):
     parsed = []
-    blocks = re.split(r"(?i)(?=Question\s*\d*:)", output_text)
+    blocks = re.split(r"(?i)(?=Question \d+:)", output_text)
     for block in blocks:
         block = block.strip()
         if not block.lower().startswith("question"):
             continue
 
-        # Question text
-        q_match = re.search(r"Question\s*\d*:\s*(.*?)(?=[A-D]\.)", block, re.DOTALL)
+        # Question text: from "Question X:" up to first A.
+        q_match = re.match(r"Question \d+:\s*(.*?)\s*A\.", block, re.DOTALL)
         question = q_match.group(1).strip() if q_match else None
 
-        # Choices (A–D on same line or split)
-        raw_choices = re.findall(r"([A-D])\. \"(.*?)\"", block)
+        # Choices: find all A.–D. with quoted text
+        raw_choices = re.findall(r'([A-D])\. "(.*?)"', block)
         choices = [f"{letter}. {text}" for letter, text in raw_choices]
 
         # Correct answer
         a_match = re.search(r"Answer:\s*([A-D])", block, re.IGNORECASE)
         correct = a_match.group(1).upper() if a_match else "?"
 
-        # Rationale only for correct answer
-        r_match = re.search(rf"{correct}\.\s*\".*?\"\s*(.*?)(?=([A-D]\.|$))", block, re.DOTALL)
-        rationale = r_match.group(1).strip() if r_match else "No rationale provided."
+        # Rationale: only for correct answer
+        r_match = None
+        for i, (letter, text) in enumerate(raw_choices):
+            if letter == correct:
+                start = block.find(f'{letter}. "{text}"') + len(f'{letter}. "{text}"')
+                end = len(block)
+                if i + 1 < len(raw_choices):
+                    next_letter = raw_choices[i + 1][0]
+                    end = block.find(f'{next_letter}. "')
+                r_match = block[start:end].strip()
+                break
+
+        rationale = r_match if r_match else "No rationale provided."
 
         if question and choices:
             parsed.append({
@@ -54,12 +64,13 @@ def parse_questions(output_text):
 st.title("💊 NCLEX Smart Tutor")
 
 topic = st.text_input("Enter a topic:", "Heart Failure")
+num_questions = st.number_input("Number of questions:", min_value=1, max_value=20, value=5, step=1)
 
 # --- Generate Questions ---
 if st.button("Generate Questions"):
     with st.spinner("Calling Gemini..."):
         try:
-            prompt = f"Create 5 NCLEX-style multiple choice questions on {topic} with answers and rationales."
+            prompt = f"Create {num_questions} NCLEX-style multiple choice questions on {topic} with answers and rationales."
             response = model.generate_content(prompt)
             output_text = response.text if hasattr(response, "text") else str(response)
 
@@ -101,6 +112,7 @@ if "questions" in st.session_state and st.session_state.questions and not st.ses
 
     # After answer selected
     if st.session_state.answered:
+        # Only score once per question
         if not st.session_state.scored_questions.get(q_index, False):
             if st.session_state.selected == question["correct"]:
                 st.success(f"✅ Correct! The answer is {question['correct']}.")
@@ -122,5 +134,3 @@ if "questions" in st.session_state and st.session_state.questions and not st.ses
         else:
             st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)}")
             st.session_state.completed = True
-      
-
