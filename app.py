@@ -1,73 +1,85 @@
 import streamlit as st
 import google.generativeai as genai
-import re
 import os
+import re
 
 # --- Setup Gemini ---
-API_KEY = st.secrets.get("API_KEY") or os.environ.get("API_KEY") or os.environ.get("GOOGLE_API_KEY")
-if not API_KEY:
-    st.error("Missing API key. Add API_KEY to .streamlit/secrets.toml or set API_KEY/GOOGLE_API_KEY in env.")
-    st.stop()
-
+API_KEY = os.environ.get("API_KEY") or "YOUR_KEY_HERE"
 genai.configure(api_key=API_KEY)
-
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# --- Page Config ---
-st.set_page_config(page_title="NCLEX Smart Tutor", page_icon="💊", layout="centered")
-
 st.title("💊 NCLEX Smart Tutor")
-st.write("Practice NCLEX-style questions with AI-generated rationales.")
 
-# --- User Input ---
-topic = st.text_input("Enter a nursing topic (e.g., Heart Failure, Electrolytes):", "")
-num_questions = st.slider("Number of questions:", 1, 5, 2)
+# --- User input ---
+topic = st.text_input("Enter a topic:", "Heart Failure")
+num_questions = st.slider("Number of questions", 1, 5, 2)
 
-if st.button("Generate Questions") and topic.strip():
-    with st.spinner("Generating questions..."):
-        prompt = f"""
-        You are an NCLEX exam question generator.
-        Create {num_questions} NCLEX-style multiple choice questions on the topic: {topic}.
-        Each question should have:
-        - A stem
-        - Four answer choices (A, B, C, D)
-        - One correct answer clearly marked
-        - A rationale
-        Format like this:
+# --- Generate questions ---
+if st.button("Generate Questions"):
+    with st.spinner("Calling Gemini..."):
+        try:
+            prompt = f"""
+            You are an NCLEX exam question generator.
+            Create {num_questions} NCLEX-style multiple choice questions on the topic: {topic}.
+            Each question should include:
+            - The question text
+            - Four answer choices (A, B, C, D)
+            - The correct answer clearly marked
+            - A rationale
+            Format exactly:
 
-        Question:
-        Choices:
-        A. ...
-        B. ...
-        C. ...
-        D. ...
-        Answer: X
-        Rationale: ...
-        """
+            Question:
+            Choices:
+            Answer:
+            Rationale:
+            """
 
-        response = model.generate_content(prompt)
-        raw_output = response.text
+            response = model.generate_content(prompt)
+            output_text = response.text if hasattr(response, "text") else str(response)
 
-        # --- Parse questions ---
-        questions = re.split(r"Question:", raw_output)[1:]  # split by "Question:"
-        for i, q in enumerate(questions, 1):
-            st.markdown(f"### Q{i}:")
-            st.markdown("Question:" + q.split("Choices:")[0].strip())
+            # --- Show raw output for debugging ---
+            with st.expander("📄 Raw Gemini Output"):
+                st.write(output_text)
 
-            choices_block = q.split("Choices:")[1].split("Answer:")[0].strip()
-            answer_line = re.search(r"Answer:\s*([A-D])", q)
-            rationale_match = re.search(r"Rationale:(.*)", q, re.DOTALL)
+            # --- Split questions robustly ---
+            blocks = re.split(r"(?=Question:)", output_text, flags=re.IGNORECASE)
 
-            correct_answer = answer_line.group(1) if answer_line else None
-            rationale = rationale_match.group(1).strip() if rationale_match else "No rationale found."
+            if len(blocks) <= 1:
+                st.warning("⚠️ Could not parse questions. Showing raw output above.")
+            else:
+                for i, block in enumerate(blocks[1:], 1):
+                    q_match = re.search(r"Question:\s*(.+)", block, re.IGNORECASE)
+                    c_match = re.search(r"Choices:\s*(.+?)(?=Answer:)", block, re.IGNORECASE | re.DOTALL)
+                    a_match = re.search(r"Answer:\s*(.+)", block, re.IGNORECASE)
+                    r_match = re.search(r"Rationale:\s*(.+)", block, re.IGNORECASE | re.DOTALL)
 
-            # Display choices with buttons
-            for choice in ["A", "B", "C", "D"]:
-                if f"{choice}." in choices_block:
-                    if st.button(f"{choice}: " + choices_block.split(f"{choice}.")[1].split("\n")[0].strip(),
-                                 key=f"{i}-{choice}"):
-                        if choice == correct_answer:
-                            st.success(f"✅ Correct! {rationale}")
+                    if not q_match or not c_match:
+                        continue
+
+                    question = q_match.group(1).strip()
+                    choices_text = c_match.group(1).strip()
+                    choices = re.split(r"[A-D][\).]", choices_text)
+                    choices = [c.strip() for c in choices if c.strip()]
+
+                    correct = a_match.group(1).strip() if a_match else "Unknown"
+                    rationale = r_match.group(1).strip() if r_match else "No rationale provided."
+
+                    st.markdown(f"### Q{i}: {question}")
+
+                    # --- Answer buttons ---
+                    choice = st.radio(
+                        f"Select your answer for Q{i}:",
+                        choices,
+                        key=f"q{i}"
+                    )
+
+                    # --- Show feedback ---
+                    if st.button(f"Check Answer Q{i}"):
+                        if choice.lower().startswith(correct.lower()[0].lower()):
+                            st.success(f"✅ Correct! The answer is {correct}.")
                         else:
-                            st.error(f"❌ Incorrect. Correct answer: {correct_answer}\n\nRationale: {rationale}")
-            st.divider()
+                            st.error(f"❌ Incorrect. The correct answer is {correct}.")
+                        st.info(f"💡 Rationale: {rationale}")
+
+        except Exception as e:
+            st.error(f"Error: {e}")
