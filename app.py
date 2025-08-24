@@ -97,7 +97,7 @@ def parse_questions(output_text):
 # --- Streamlit UI ---
 st.title("🏥 NCLEX Smart Question and Rationale Tutor 🏥")
 difficulty = st.selectbox("Select difficulty level:", ["Easy", "Medium", "Hard"])
-question_type_percent = st.slider("Select question type percentage:", 0, 100, 50)
+question_type_percent = st.selectbox("Select percentage of SATA Questions:", ["0", "25", "50", "75", "100"], index=2)
 topic = st.text_input("Enter a topic:", "Heart Failure")
 num_questions = st.number_input("Number of questions:", min_value=1, max_value=20, value=5, step=1)
 
