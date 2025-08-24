@@ -8,7 +8,7 @@ API_KEY = os.environ.get("API_KEY") or "YOUR_KEY_HERE"
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-st.title("💊 NCLEX Smart Tutor")
+st.title("💊 NCLEX Smart Tutor (Next-Question Mode)")
 
 # --- User input ---
 topic = st.text_input("Enter a topic:", "Heart Failure")
@@ -17,6 +17,10 @@ num_questions = st.slider("Number of questions", 1, 5, 2)
 # --- Initialize session state ---
 if "questions" not in st.session_state:
     st.session_state.questions = []
+if "q_index" not in st.session_state:
+    st.session_state.q_index = 0
+if "answered" not in st.session_state:
+    st.session_state.answered = False
 
 
 def parse_questions(output_text):
@@ -35,8 +39,11 @@ def parse_questions(output_text):
 
         question = q_match.group(1).strip()
         choices_text = c_match.group(1).strip()
+
+        # Split into A–D choices
         choices = re.split(r"[A-D][\).]", choices_text)
         choices = [c.strip() for c in choices if c.strip()]
+        choices = [f"{chr(65+i)}. {c}" for i, c in enumerate(choices)]  # A., B., C., D.
 
         correct = a_match.group(1).strip() if a_match else "Unknown"
         rationale = r_match.group(1).strip() if r_match else "No rationale provided."
@@ -74,6 +81,8 @@ if st.button("Generate Questions"):
             output_text = response.text if hasattr(response, "text") else str(response)
 
             st.session_state.questions = parse_questions(output_text)
+            st.session_state.q_index = 0
+            st.session_state.answered = False
 
             with st.expander("📄 Raw Gemini Output"):
                 st.write(output_text)
@@ -82,19 +91,32 @@ if st.button("Generate Questions"):
             st.error(f"Error: {e}")
 
 
-# --- Display questions from session_state ---
-for i, qdata in enumerate(st.session_state.questions, 1):
-    st.markdown(f"### Q{i}: {qdata['q']}")
+# --- Display one question at a time ---
+if st.session_state.questions:
+    i = st.session_state.q_index
+    qdata = st.session_state.questions[i]
+
+    st.markdown(f"### Q{i+1}: {qdata['q']}")
 
     choice = st.radio(
-        f"Select your answer for Q{i}:",
+        "Select your answer:",
         qdata["choices"],
         key=f"choice_{i}"
     )
 
-    if st.button(f"Check Answer Q{i}", key=f"check_{i}"):
-        if choice.lower().startswith(qdata["correct"].lower()[0].lower()):
-            st.success(f"✅ Correct! The answer is {qdata['correct']}.")
+    if not st.session_state.answered:
+        if st.button("Check Answer"):
+            if choice.lower().startswith(qdata["correct"].lower()[0].lower()):
+                st.success(f"✅ Correct! The answer is {qdata['correct']}.")
+            else:
+                st.error(f"❌ Incorrect. The correct answer is {qdata['correct']}.")
+            st.info(f"💡 Rationale: {qdata['rationale']}")
+            st.session_state.answered = True
+
+    if st.session_state.answered:
+        if i < len(st.session_state.questions) - 1:
+            if st.button("Next Question ➡️"):
+                st.session_state.q_index += 1
+                st.session_state.answered = False
         else:
-            st.error(f"❌ Incorrect. The correct answer is {qdata['correct']}.")
-        st.info(f"💡 Rationale: {qdata['rationale']}")
+            st.success("🎉 You've completed all questions!")
