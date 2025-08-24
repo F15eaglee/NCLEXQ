@@ -153,7 +153,27 @@ if "questions" in st.session_state and st.session_state.questions and not st.ses
                 st.error(f"❌ Incorrect. The correct answer is {question['correct']}.")
             st.session_state.scored_questions[q_index] = True
 
-        st.info(f"💡 Rationale: {question['rationale']}")
+        # Show rationales for all options
+        st.markdown("#### 💡 Rationales")
+        # Build a map from letter -> option text
+        choice_map = {}
+        for c in question["choices"]:
+            m = re.match(r"([A-D])\.\s*(.*)", c)
+            if m:
+                choice_map[m.group(1)] = m.group(2)
+
+        for letter in ["A", "B", "C", "D"]:
+            if letter not in choice_map:
+                continue
+            text = choice_map[letter]
+            expl = (question.get("rationales", {}) or {}).get(letter, "")
+            if letter == question["correct"]:
+                st.success(f"{letter}. {text}\n\n💡 {expl}" if expl else f"{letter}. {text}")
+            elif letter == st.session_state.selected:
+                st.warning(f"{letter}. {text}\n\n💡 {expl}" if expl else f"{letter}. {text}")
+            else:
+                st.info(f"{letter}. {text}\n\n💡 {expl}" if expl else f"{letter}. {text}")
+
         st.write(f"📊 Score: {st.session_state.score}/{q_index+1}")
 
         # Next question or finish
