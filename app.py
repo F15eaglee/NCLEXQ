@@ -14,7 +14,7 @@ MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
 model = genai.GenerativeModel(MODEL_NAME)
 
 
-# --- Parse Gemini output for 2.5 Flash single-line choices ---
+# --- Parse Gemini output (for format with rationale and single-line choices) ---
 def parse_questions(output_text):
     parsed = []
 
@@ -25,24 +25,23 @@ def parse_questions(output_text):
         if not block:
             continue
 
-        # Extract question text up to first A.
+        # Question text up to first A.
         q_match = re.match(r"Question \d+\s*(.*?)\s*A\.", block, re.DOTALL)
         question_text = q_match.group(1).strip() if q_match else None
 
-        # Extract choices (A-D) on one line
+        # Choices (A-D) on one line
         raw_choices = re.findall(r'([A-D])\. (.*?)(?= [A-D]\. |$)', block, re.DOTALL)
         choices = [f"{letter}. {text.strip()}" for letter, text in raw_choices]
 
-        # Extract correct answer
+        # Correct answer
         a_match = re.search(r"Answer:\s*([A-D])", block)
         correct = a_match.group(1).upper() if a_match else "?"
 
-        # Extract rationale: text after "Rationale:" up to first incorrect choice letter (A/C/D other than correct)
+        # Rationale: text after "Rationale:" up to first incorrect choice bullet
         rationale_match = re.search(r"Rationale:\s*(.*)", block, re.DOTALL)
         rationale_text = ""
         if rationale_match:
             text_after = rationale_match.group(1).strip()
-            # Stop before next letter that is not correct
             stop_idx = len(text_after)
             for letter, _ in raw_choices:
                 if letter != correct:
@@ -109,12 +108,11 @@ if "questions" in st.session_state and st.session_state.questions and not st.ses
     # Answer buttons
     for i, choice in enumerate(question["choices"]):
         if st.button(choice, key=f"choice_{q_index}_{i}"):
-            st.session_state.selected = choice[0]  # first letter A–D
+            st.session_state.selected = choice[0]  # first letter A-D
             st.session_state.answered = True
 
     # After answer selected
     if st.session_state.answered:
-        # Only score once per question
         if not st.session_state.scored_questions.get(q_index, False):
             if st.session_state.selected == question["correct"]:
                 st.success(f"✅ Correct! The answer is {question['correct']}.")
