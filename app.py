@@ -44,15 +44,25 @@ def parse_questions(output_text):
         # Build choices in A-D order if present
         choices = [f"{letter}. {options[letter]}" for letter in ["A", "B", "C", "D"] if letter in options]
 
-        # Pick rationale for the correct option (fallback to empty string)
-        rationale = rationales.get(correct, "").strip()
+        # Build a full A-D rationale map; fallback to 'correct' key if needed
+        if {"A", "B", "C", "D"} & set(rationales.keys()):
+            rationales_map = {letter: (rationales.get(letter, "") or "").strip() for letter in ["A", "B", "C", "D"]}
+        else:
+            # Only 'correct' rationale provided
+            rationales_map = {letter: "" for letter in ["A", "B", "C", "D"]}
+            if "correct" in rationales and correct in ["A", "B", "C", "D"]:
+                rationales_map[correct] = (rationales.get("correct", "") or "").strip()
+
+        # Keep single 'rationale' for backward compatibility (correct option only)
+        rationale = rationales_map.get(correct, "")
 
         if question_text and choices:
             parsed.append({
                 "q": question_text,
                 "choices": choices,
                 "correct": correct,
-                "rationale": rationale
+                "rationale": rationale,
+                "rationales": rationales_map
             })
 
     return parsed
