@@ -25,35 +25,44 @@ if "answered" not in st.session_state:
 
 def parse_questions(output_text):
     """Parse Gemini output into structured questions"""
-    blocks = re.split(r"(?=Question:)", output_text, flags=re.IGNORECASE)
     parsed = []
 
-    for i, block in enumerate(blocks[1:], 1):
-        q_match = re.search(r"Question:\s*(.+)", block, re.IGNORECASE)
-        c_match = re.search(r"Choices:\s*(.+?)(?=Answer:)", block, re.IGNORECASE | re.DOTALL)
-        a_match = re.search(r"Answer:\s*(.+)", block, re.IGNORECASE)
-        r_match = re.search(r"Rationale:\s*(.+)", block, re.IGNORECASE | re.DOTALL)
-
-        if not q_match or not c_match:
+    # Split by "Question:" but keep text after
+    blocks = re.split(r"(?i)Question[:]", output_text)
+    for block in blocks:
+        block = block.strip()
+        if not block:
             continue
 
-        question = q_match.group(1).strip()
-        choices_text = c_match.group(1).strip()
+        # Extract question (before Choices:)
+        q_match = re.search(r"^(.*?)(?=Choices:)", block, re.IGNORECASE | re.DOTALL)
+        question = q_match.group(1).strip() if q_match else None
 
-        # Split into A–D choices
-        choices = re.split(r"[A-D][\).]", choices_text)
-        choices = [c.strip() for c in choices if c.strip()]
-        choices = [f"{chr(65+i)}. {c}" for i, c in enumerate(choices)]  # A., B., C., D.
+        # Extract choices
+        c_match = re.search(r"Choices:\s*(.*?)(?=(Answer:|Rationale:|$))", block, re.IGNORECASE | re.DOTALL)
+        choices_text = c_match.group(1).strip() if c_match else ""
 
-        correct = a_match.group(1).strip() if a_match else "Unknown"
+        # Split into A–D
+        raw_choices = re.split(r"\n|(?=[A-D][\).])", choices_text)
+        raw_choices = [c.strip(" -:)") for c in raw_choices if c.strip()]
+        choices = [f"{chr(65+i)}. {c}" for i, c in enumerate(raw_choices)]
+
+        # Correct answer
+        a_match = re.search(r"Answer:\s*([A-D])", block, re.IGNORECASE)
+        correct = a_match.group(1).upper() if a_match else "?"
+
+        # Rationale
+        r_match = re.search(r"Rationale:\s*(.*)", block, re.IGNORECASE | re.DOTALL)
         rationale = r_match.group(1).strip() if r_match else "No rationale provided."
 
-        parsed.append({
-            "q": question,
-            "choices": choices,
-            "correct": correct,
-            "rationale": rationale
-        })
+        if question and choices:
+            parsed.append({
+                "q": question,
+                "choices": choices,
+                "correct": correct,
+                "rationale": rationale
+            })
+
     return parsed
 
 
@@ -66,13 +75,17 @@ if st.button("Generate Questions"):
             Create {num_questions} NCLEX-style multiple choice questions on the topic: {topic}.
             Each question should include:
             - The question text
-            - Four answer choices (A, B, C, D)
-            - The correct answer clearly marked
+            - Four answer choices labeled A–D
+            - The correct answer clearly marked like "Answer: B"
             - A rationale
             Format exactly:
 
             Question:
             Choices:
+            A) ...
+            B) ...
+            C) ...
+            D) ...
             Answer:
             Rationale:
             """
@@ -106,7 +119,7 @@ if st.session_state.questions:
 
     if not st.session_state.answered:
         if st.button("Check Answer"):
-            if choice.lower().startswith(qdata["correct"].lower()[0].lower()):
+            if choice.startswith(qdata["correct"]):
                 st.success(f"✅ Correct! The answer is {qdata['correct']}.")
             else:
                 st.error(f"❌ Incorrect. The correct answer is {qdata['correct']}.")
