@@ -15,36 +15,37 @@ MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
 model = genai.GenerativeModel(MODEL_NAME)
 
 
-# --- Parse Gemini output (for format with rationale and single-line choices) ---
+# --- Parse Gemini output (JSON with top-level "questions") ---
 def parse_questions(output_text):
     parsed = []
+
+    # Strip possible Markdown code fences
+    txt = output_text.strip()
+    if txt.startswith("```"):
+        txt = re.sub(r"^```[a-zA-Z0-9]*\s*", "", txt)
+        txt = re.sub(r"\s*```$", "", txt)
+
     try:
-        data = json.loads(output_text)
-        # If the top-level is a dict with a "question" key
-        if "question" in data:
-            data = [data["question"]]
-        elif isinstance(data, dict):
-            data = [data]
+        data = json.loads(txt)
     except Exception:
         st.error("❌ Could not parse JSON. Check the raw output.")
         return []
 
-    for q in data:
-        question_text = q.get("text") or q.get("question", "")
-        options = q.get("options", [])
-        # Handle options as a list of dicts with 'id' and 'text'
-        if isinstance(options, list):
-            choices = [f"{opt['id']}. {opt['text']}" for opt in options if 'id' in opt and 'text' in opt]
-        elif isinstance(options, dict):
-            choices = [f"{letter}. {options[letter]}" for letter in ["A", "B", "C", "D"] if letter in options]
-        else:
-            choices = []
+    if not isinstance(data, dict) or "questions" not in data or not isinstance(data["questions"], list):
+        st.error("❌ JSON does not contain 'questions' as a list.")
+        return []
 
-        correct = q.get("correct_answer", "?")
-        rationale = ""
-        rationales = q.get("rationales", {})
-        if isinstance(rationales, dict):
-            rationale = rationales.get("correct", "")
+    for q in data["questions"]:
+        question_text = q.get("question_text", "").strip()
+        options = q.get("options", {}) or {}
+        correct = (q.get("correct_answer") or "?").strip().upper()
+        rationales = q.get("rationales", {}) or {}
+
+        # Build choices in A-D order if present
+        choices = [f"{letter}. {options[letter]}" for letter in ["A", "B", "C", "D"] if letter in options]
+
+        # Pick rationale for the correct option (fallback to empty string)
+        rationale = rationales.get(correct, "").strip()
 
         if question_text and choices:
             parsed.append({
@@ -53,6 +54,7 @@ def parse_questions(output_text):
                 "correct": correct,
                 "rationale": rationale
             })
+
     return parsed
 
 
