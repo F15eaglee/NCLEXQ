@@ -29,12 +29,16 @@ def parse_questions(output_text):
         question_text = q_match.group(1).strip() if q_match else None
 
         # Extract only the choices section (from first A. to "Answer:")
-        choices_section = re.search(r"(A\..*?)(?:Answer\s*[:\-]?\s*[A-D])", block, re.DOTALL | re.IGNORECASE)
+        choices_section = re.search(r"(A\..*?)(?:\nAnswer\s*[:\-]?\s*[A-D])", block, re.DOTALL | re.IGNORECASE)
         choices = []
         if choices_section:
-            # Now extract choices from just this section
-            raw_choices = re.findall(r"([A-D])\.\s*(.+?)(?=\n[A-D]\.|$)", choices_section.group(1), re.DOTALL)
-            choices = [f"{letter}. {text.strip().replace('\n', ' ')}" for letter, text in raw_choices]
+            # Split choices section into lines, keep only those starting with A./B./C./D.
+            lines = choices_section.group(1).splitlines()
+            for line in lines:
+                m = re.match(r"([A-D])\.\s*(.+)", line.strip())
+                if m:
+                    letter, text = m.groups()
+                    choices.append(f"{letter}. {text.strip()}")
 
         # Correct answer
         a_match = re.search(r"Answer\s*[:\-]?\s*([A-D])", block, re.IGNORECASE)
