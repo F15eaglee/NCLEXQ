@@ -17,38 +17,28 @@ model = genai.GenerativeModel(MODEL_NAME)
 # --- Parse Gemini output (for format with rationale and single-line choices) ---
 def parse_questions(output_text):
     parsed = []
-
     # Split by "Question X"
-    blocks = re.split(r"(?i)(?=Question \d+)", output_text)
+    blocks = re.split(r"(?i)(?=Question\s*\d+)", output_text)
     for block in blocks:
         block = block.strip()
         if not block:
             continue
 
-        # Question text up to first A.
-        q_match = re.match(r"Question \d+\s*(.*?)\s*A\.", block, re.DOTALL)
+        # Question text up to first choice
+        q_match = re.search(r"Question\s*\d+\s*\n*(.*?)(?:\nA\.|\nA:)", block, re.DOTALL)
         question_text = q_match.group(1).strip() if q_match else None
 
-        # Choices (A-D) on one line
-        raw_choices = re.findall(r'([A-D])\. (.*?)(?= [A-D]\. |$)', block, re.DOTALL)
+        # Choices: match lines starting with A./B./C./D.
+        raw_choices = re.findall(r"([A-D])\.\s*(.+)", block)
         choices = [f"{letter}. {text.strip()}" for letter, text in raw_choices]
 
         # Correct answer
-        a_match = re.search(r"Answer:\s*([A-D])", block)
+        a_match = re.search(r"Answer\s*[:\-]?\s*([A-D])", block, re.IGNORECASE)
         correct = a_match.group(1).upper() if a_match else "?"
 
-        # Rationale: text after "Rationale:" up to first incorrect choice bullet
-        rationale_match = re.search(r"Rationale:\s*(.*)", block, re.DOTALL)
-        rationale_text = ""
-        if rationale_match:
-            text_after = rationale_match.group(1).strip()
-            stop_idx = len(text_after)
-            for letter, _ in raw_choices:
-                if letter != correct:
-                    idx = text_after.find(f"{letter}.")
-                    if idx != -1:
-                        stop_idx = min(stop_idx, idx)
-            rationale_text = text_after[:stop_idx].strip()
+        # Rationale: everything after "Rationale:"
+        rationale_match = re.search(r"Rationale\s*[:\-]?\s*(.*)", block, re.DOTALL | re.IGNORECASE)
+        rationale_text = rationale_match.group(1).strip() if rationale_match else ""
 
         if question_text and choices:
             parsed.append({
