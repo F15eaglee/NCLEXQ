@@ -113,14 +113,14 @@ if st.button("Generate Questions"):
                   "question_number": "QUESTION_NUMBER",
                   "question_type": "select_all_that_apply",
                   "question_text": "QUESTION_TEXT",
-                  "options": {
+                  "options": {\n'
                     "A": "OPTION_A",
                     "B": "OPTION_B",
                     "C": "OPTION_C",
                     "D": "OPTION_D",
                     "E": "OPTION_E",
                     "F": "OPTION_F"
-                  },
+                  "},\n'
                   "correct_answers": ["A", "C"], 
                   "rationales": {
                     "A": "RATIONALE_A",
@@ -129,8 +129,8 @@ if st.button("Generate Questions"):
                     "D": "RATIONALE_D",
                     "E": "RATIONALE_E",
                     "F": "RATIONALE_F"
-                  }
-                }
+                 " }\n'
+                "}\n'
             )
             response = model.generate_content(prompt)
             output_text = response.text if hasattr(response, "text") else str(response)
