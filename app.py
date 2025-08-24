@@ -17,44 +17,46 @@ model = genai.GenerativeModel(MODEL_NAME)
 # --- Parse Gemini output for 2.5 Flash single-line choices ---
 def parse_questions(output_text):
     parsed = []
-    blocks = re.split(r"(?i)(?=Question \d+:)", output_text)
+
+    # Split by "Question X"
+    blocks = re.split(r"(?i)(?=Question \d+)", output_text)
     for block in blocks:
         block = block.strip()
-        if not block.lower().startswith("question"):
+        if not block:
             continue
 
-        # Question text: from "Question X:" up to first A.
-        q_match = re.match(r"Question \d+:\s*(.*?)\s*A\.", block, re.DOTALL)
-        question = q_match.group(1).strip() if q_match else None
+        # Extract question text up to first A.
+        q_match = re.match(r"Question \d+\s*(.*?)\s*A\.", block, re.DOTALL)
+        question_text = q_match.group(1).strip() if q_match else None
 
-        # Choices: find all A.–D. with quoted text
-        raw_choices = re.findall(r'([A-D])\. "(.*?)"', block)
-        choices = [f"{letter}. {text}" for letter, text in raw_choices]
+        # Extract choices (A-D) on one line
+        raw_choices = re.findall(r'([A-D])\. (.*?)(?= [A-D]\. |$)', block, re.DOTALL)
+        choices = [f"{letter}. {text.strip()}" for letter, text in raw_choices]
 
-        # Correct answer
-        a_match = re.search(r"Answer:\s*([A-D])", block, re.IGNORECASE)
+        # Extract correct answer
+        a_match = re.search(r"Answer:\s*([A-D])", block)
         correct = a_match.group(1).upper() if a_match else "?"
 
-        # Rationale: only for correct answer
-        r_match = None
-        for i, (letter, text) in enumerate(raw_choices):
-            if letter == correct:
-                start = block.find(f'{letter}. "{text}"') + len(f'{letter}. "{text}"')
-                end = len(block)
-                if i + 1 < len(raw_choices):
-                    next_letter = raw_choices[i + 1][0]
-                    end = block.find(f'{next_letter}. "')
-                r_match = block[start:end].strip()
-                break
+        # Extract rationale: text after "Rationale:" up to first incorrect choice letter (A/C/D other than correct)
+        rationale_match = re.search(r"Rationale:\s*(.*)", block, re.DOTALL)
+        rationale_text = ""
+        if rationale_match:
+            text_after = rationale_match.group(1).strip()
+            # Stop before next letter that is not correct
+            stop_idx = len(text_after)
+            for letter, _ in raw_choices:
+                if letter != correct:
+                    idx = text_after.find(f"{letter}.")
+                    if idx != -1:
+                        stop_idx = min(stop_idx, idx)
+            rationale_text = text_after[:stop_idx].strip()
 
-        rationale = r_match if r_match else "No rationale provided."
-
-        if question and choices:
+        if question_text and choices:
             parsed.append({
-                "q": question,
+                "q": question_text,
                 "choices": choices,
                 "correct": correct,
-                "rationale": rationale
+                "rationale": rationale_text
             })
 
     return parsed
