@@ -174,7 +174,7 @@ if st.button("Generate Questions"):
                 mcq_template,
                 "For select_all_that_apply items, use this template:",
                 sata_template,
-                "For each question, add a 'resource_link' and 'resource_source' field with a reputable online resource (official NCLEX, Khan Academy, or YouTube) for further study on the question topic."
+                "For each question, add a 'resource_link' and 'resource_source' field with a reputable online specific resource related to the question (official NCLEX, Khan Academy, or YouTube) for further study on the question topic."
             ])
 
             response = model.generate_content(prompt)
