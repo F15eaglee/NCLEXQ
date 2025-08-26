@@ -268,7 +268,7 @@ if "questions" in st.session_state and st.session_state.questions:
             rs = (question.get("resource_source") or "").strip()
             if rl:
                 st.markdown("#### 📚 Resource")
-                st.markdown(f"Dig deeper... [resource_source] [resource link]({rl})")
+                st.markdown(f"Dig deeper... [{rs}]({rl})")
 
             st.markdown("#### 💡 Rationales")
             for L in letters_order:
