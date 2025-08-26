@@ -72,7 +72,7 @@ import os
 
 # --- Streamlit UI ---
 st.title("🏥 NCLEX Smart Question and Rationale Tutor 🏥")
-st.subheader("developed by Glenn Heydolph, ADN '26 DSC")
+st.subheader("Developed by Glenn Heydolph, ADN '26 DSC w/ copilot assistance")
 difficulty = st.selectbox("Select difficulty level:", ["Easy", "Medium", "Hard"])
 question_type_percent = st.selectbox("Select percentage of SATA Questions:", ["0", "25", "50", "75", "100"], index=2)
 topic = st.text_input("Enter a topic:", "Heart Failure")
@@ -325,3 +325,4 @@ if st.button("Generate Questions"):
         else:
             st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)}")
             st.session_state.completed = True
+
