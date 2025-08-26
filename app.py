@@ -96,6 +96,7 @@ def parse_questions(output_text):
 
 # --- Streamlit UI ---
 st.title("🏥 NCLEX Smart Question and Rationale Tutor 🏥")
+st.subheader("developed by Glenn Heydolph, ADN '26 DSC")
 difficulty = st.selectbox("Select difficulty level:", ["Easy", "Medium", "Hard"])
 question_type_percent = st.selectbox("Select percentage of SATA Questions:", ["0", "25", "50", "75", "100"], index=2)
 topic = st.text_input("Enter a topic:", "Heart Failure")
@@ -103,7 +104,7 @@ num_questions = st.number_input("Number of questions:", min_value=1, max_value=2
 
 # --- Generate Questions ---
 if st.button("Generate Questions"):
-    with st.spinner("Calling Gemini..."):
+    with st.spinner("Calling Gemini 2.5 Flash..."):
         try:
             mcq_template = """
 {
