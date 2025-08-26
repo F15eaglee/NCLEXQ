@@ -91,7 +91,7 @@ def parse_questions(output_text):
                 "choices": choices,                 # ["A. ...", "B. ...", ...]
                 "correct_set": sorted(list(correct_set)),
                 "rationales": rationales_map,       # { "A": "...", ... }
-                "resource_link": resource_link
+                "resource_link": resource_link,
                 "resource_source": resource_source
             })
 
