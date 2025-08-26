@@ -229,19 +229,20 @@ if "questions" in st.session_state and st.session_state.questions:
                     sel_letter = selected_display.split(".", 1)[0]
                     st.session_state.answered = True
                     st.session_state.selected_letters = [sel_letter]
-        else:  # SATA
-            sata_opts = [f"{L}. {label_map[L]}" for L in letters_order]
-            selected_displays = st.multiselect(
-                "Select all that apply:",
-                sata_opts,
-                key=f"sata_{q_index}"
-            )
+        else:  # SATA -> use checkboxes instead of multiselect
+            st.write("Select all that apply:")
+            # Render a checkbox for each option (A-F)
+            checkbox_states = {}
+            for L in letters_order:
+                label = f"{L}. {label_map[L]}"
+                checkbox_states[L] = st.checkbox(label, key=f"sata_{q_index}_{L}")
+
             submit_clicked = st.button("Submit", key=f"submit_{q_index}")
             if submit_clicked:
-                if not selected_displays:
+                sel_letters = [L for L, checked in checkbox_states.items() if checked]
+                if not sel_letters:
                     st.warning("Please select at least one option.")
                 else:
-                    sel_letters = [s.split(".", 1)[0] for s in selected_displays]
                     st.session_state.answered = True
                     st.session_state.selected_letters = sel_letters
 
@@ -257,6 +258,12 @@ if "questions" in st.session_state and st.session_state.questions:
                 else:
                     st.error(f"❌ Incorrect. Correct answer(s): {', '.join(sorted(correct_set))}")
                 st.session_state.scored_questions[q_index] = True
+
+            # Resource link (shown above rationales)
+            rl = (question.get("resource_link") or "").strip()
+            if rl:
+                st.markdown("#### 📚 Resource")
+                st.markdown(f"[Open resource link]({rl})")
 
             st.markdown("#### 💡 Rationales")
             for L in letters_order:
