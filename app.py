@@ -82,6 +82,7 @@ def parse_questions(output_text):
 
         qtype = "sata" if is_sata else "mcq"
         resource_link = (q.get("resource_link") or "").strip()
+        resource_source = (q.get("resource_source") or "").strip()
 
         if question_text and choices and correct_set:
             parsed.append({
@@ -91,6 +92,7 @@ def parse_questions(output_text):
                 "correct_set": sorted(list(correct_set)),
                 "rationales": rationales_map,       # { "A": "...", ... }
                 "resource_link": resource_link
+                "resource_source": resource_source
             })
 
     return parsed
@@ -123,7 +125,8 @@ mcq_template = """
     "C": "RATIONALE_C",
     "D": "RATIONALE_D"
   },
-  "resource_link": "https://www.example.com/resource"
+  "resource_link": "https://www.example.com/resource",
+  "resource_source": "resource_source"
 }
 """.strip()
 
@@ -149,7 +152,8 @@ sata_template = """
     "E": "RATIONALE_E",
     "F": "RATIONALE_F"
   },
-  "resource_link": "https://www.example.com/resource"
+  "resource_link": "https://www.example.com/resource",
+  "resource_source": "resource_source"
 }
 """.strip()
 
@@ -170,7 +174,7 @@ if st.button("Generate Questions"):
                 mcq_template,
                 "For select_all_that_apply items, use this template:",
                 sata_template,
-                "For each question, add a 'resource_link' field with a reputable online resource (official NCLEX, Khan Academy, or YouTube) for further study on the question topic."
+                "For each question, add a 'resource_link' and 'resource_source' field with a reputable online resource (official NCLEX, Khan Academy, or YouTube) for further study on the question topic."
             ])
 
             response = model.generate_content(prompt)
@@ -261,9 +265,10 @@ if "questions" in st.session_state and st.session_state.questions:
 
             # Resource link (shown above rationales)
             rl = (question.get("resource_link") or "").strip()
+            rs = (question.get("resource_source") or "").strip()
             if rl:
                 st.markdown("#### 📚 Resource")
-                st.markdown(f"[Open resource link]({rl})")
+                st.markdown(f"Dig deeper... [resource_source] [resource link]({rl})")
 
             st.markdown("#### 💡 Rationales")
             for L in letters_order:
