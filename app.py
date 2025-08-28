@@ -13,7 +13,7 @@ if not API_KEY:
     st.error("Missing API key. Add API_KEY to .streamlit/secrets.toml or set GOOGLE_API_KEY/API_KEY in env.")
     st.stop()
 genai.configure(api_key=API_KEY)
-MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-1.5-flash")
+MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
 model = genai.GenerativeModel(MODEL_NAME)
 
 # --- Optimized Parsing Functions ---
