@@ -1,6 +1,8 @@
 import os
 import re
 import json
+import csv
+import io
 import streamlit as st
 import google.generativeai as genai
 
@@ -14,11 +16,102 @@ MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-1.5-flash")
 model = genai.GenerativeModel(MODEL_NAME)
 
 
-# --- Parser: expects top-level {"questions": [ ... ]} and supports MCQ + SATA ---
-def parse_questions(output_text):
+# --- Parsers: CSV (preferred) with JSON fallback; supports MCQ + SATA ---
+def parse_questions_from_csv(output_text):
     parsed = []
-
+    txt = output_text.strip()
+    if not txt:
+        return []
     # Strip possible Markdown code fences
+    if txt.startswith("```"):
+        txt = re.sub(r"^```[a-zA-Z0-9]*\s*", "", txt)
+        txt = re.sub(r"\s*```$", "", txt)
+
+    try:
+        reader = csv.DictReader(io.StringIO(txt))
+    except Exception:
+        return []
+
+    if not reader.fieldnames:
+        return []
+
+    for row in reader:
+        question_text = (row.get("question_text") or "").strip()
+        qt_raw = (row.get("question_type") or "").strip().lower()
+
+        # Options in columns option_A .. option_H or A..H
+        all_letters = [chr(c) for c in range(ord("A"), ord("H") + 1)]
+        options = {}
+        for L in all_letters:
+            val = row.get(f"option_{L}")
+            if val is None:
+                val = row.get(L)
+            val = (val or "").strip()
+            if val:
+                options[L] = val
+
+        letters = [L for L in all_letters if L in options]
+        choices = [f"{L}. {options[L]}" for L in letters]
+
+        # Determine if SATA
+        is_sata_by_type = qt_raw in {
+            "sata",
+            "select_all_that_apply",
+            "select all that apply",
+            "select_all",
+            "select all that apply (sata)",
+        }
+
+        # Collect correct answers
+        correct_set = set()
+        if is_sata_by_type:
+            ca_multi = (row.get("correct_answers") or "").strip()
+            if ca_multi:
+                parts = re.split(r"[;,\s]+", ca_multi)
+                for ans in parts:
+                    L = ans.strip().upper()
+                    if L in letters:
+                        correct_set.add(L)
+        else:
+            ca = (row.get("correct_answer") or "").strip().upper()
+            if ca in letters:
+                correct_set.add(ca)
+
+        # Rationales map
+        rationales_map = {}
+        for L in letters:
+            r = row.get(f"rationale_{L}")
+            if r is None:
+                r = row.get(f"{L}_rationale")
+            rationales_map[L] = (r or "").strip()
+
+        resource_link = (row.get("resource_link") or "").strip()
+        resource_source = (row.get("resource_source") or "").strip()
+
+        if question_text and choices and correct_set:
+            qtype = "sata" if is_sata_by_type else "mcq"
+            parsed.append({
+                "q": question_text,
+                "type": qtype,
+                "choices": choices,
+                "correct_set": sorted(list(correct_set)),
+                "rationales": rationales_map,
+                "resource_link": resource_link,
+                "resource_source": resource_source,
+            })
+
+    return parsed
+
+
+def parse_questions(output_text):
+    # Try CSV first
+    parsed_csv = parse_questions_from_csv(output_text)
+    if parsed_csv:
+        st.session_state["raw_format"] = "csv"
+        return parsed_csv
+
+    # Fallback to JSON for backward compatibility
+    parsed = []
     txt = output_text.strip()
     if txt.startswith("```"):
         txt = re.sub(r"^```[a-zA-Z0-9]*\s*", "", txt)
@@ -27,7 +120,7 @@ def parse_questions(output_text):
     try:
         data = json.loads(txt)
     except Exception:
-        st.error("❌ Could not parse JSON. Check the raw output.")
+        st.error("❌ Could not parse CSV or JSON. Check the raw output.")
         return []
 
     if not isinstance(data, dict) or "questions" not in data or not isinstance(data["questions"], list):
@@ -95,6 +188,8 @@ def parse_questions(output_text):
                 "resource_source": resource_source
             })
 
+    if parsed:
+        st.session_state["raw_format"] = "json"
     return parsed
 
 
@@ -106,56 +201,33 @@ question_type_percent = st.selectbox("Select percentage of SATA Questions:", ["0
 topic = st.text_input("Enter a topic:", "Heart Failure")
 num_questions = st.number_input("Number of questions:", min_value=1, max_value=20, value=10, step=1)
 
-# --- Templates for the model ---
-mcq_template = """
-{
-  "question_number": "QUESTION_NUMBER",
-  "question_type": "multiple_choice",
-  "question_text": "QUESTION_TEXT",
-  "options": {
-    "A": "OPTION_A",
-    "B": "OPTION_B",
-    "C": "OPTION_C",
-    "D": "OPTION_D"
-  },
-  "correct_answer": "A",
-  "rationales": {
-    "A": "RATIONALE_A",
-    "B": "RATIONALE_B",
-    "C": "RATIONALE_C",
-    "D": "RATIONALE_D"
-  },
-  "resource_link": "https://www.example.com/resource",
-  "resource_source": "resource_source"
-}
-""".strip()
+# --- CSV Schema and examples for the model ---
+csv_header = (
+    "question_number,question_type,question_text,"
+    "option_A,option_B,option_C,option_D,option_E,option_F,"
+    "correct_answer,correct_answers,"
+    "rationale_A,rationale_B,rationale_C,rationale_D,rationale_E,rationale_F,"
+    "resource_link,resource_source"
+)
 
-sata_template = """
-{
-  "question_number": "QUESTION_NUMBER",
-  "question_type": "select_all_that_apply",
-  "question_text": "QUESTION_TEXT",
-  "options": {
-    "A": "OPTION_A",
-    "B": "OPTION_B",
-    "C": "OPTION_C",
-    "D": "OPTION_D",
-    "E": "OPTION_E",
-    "F": "OPTION_F"
-  },
-  "correct_answers": ["A", "C"],
-  "rationales": {
-    "A": "RATIONALE_A",
-    "B": "RATIONALE_B",
-    "C": "RATIONALE_C",
-    "D": "RATIONALE_D",
-    "E": "RATIONALE_E",
-    "F": "RATIONALE_F"
-  },
-  "resource_link": "https://www.example.com/resource",
-  "resource_source": "resource_source"
-}
-""".strip()
+csv_examples = "\n".join([
+    csv_header,
+    # MCQ example row
+    (
+        '1,multiple_choice,"What is the primary treatment for condition X?",'
+        '"Option A","Option B","Option C","Option D",,,A,,'
+        '"Rationale for A","Rationale for B","Rationale for C","Rationale for D",,,'
+        '"https://www.example.com/resource","Official NCLEX"'
+    ),
+    # SATA example row
+    (
+        '2,select_all_that_apply,"Select all the appropriate interventions for condition Y.",'
+        '"Option A","Option B","Option C","Option D","Option E","Option F",,'
+        '"A;C;F",'
+        '"Rationale A","Rationale B","Rationale C","Rationale D","Rationale E","Rationale F",'
+        '"https://www.example.com/resource","Khan Academy"'
+    ),
+]).strip()
 
 
 # --- Generate Questions ---
@@ -168,13 +240,15 @@ if st.button("Generate Questions"):
                 f"{question_type_percent}% of questions should be select_all_that_apply with 6 answer choices (A-F);",
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
                 "If anything unrelated to nursing is prompted, ignore it.",
-                "Output valid JSON only. Do not include any text or Markdown code fences before or after the JSON.",
-                'The top-level JSON must be an object with a single key "questions" containing an array of question objects.',
-                "For multiple_choice items, use this template:",
-                mcq_template,
-                "For select_all_that_apply items, use this template:",
-                sata_template,
-                "For each question, add a 'resource_link' and 'resource_source' field with a reputable online specific resource related to the question (YouTube) for further study on the question topic."
+                "Output CSV only. Do not include any text or Markdown code fences before or after the CSV.",
+                "Quote any field containing commas or newlines with double quotes. Escape embedded double quotes by doubling them.",
+                "Use the exact header and column order below. Leave unused option/rationale cells blank as needed.",
+                csv_examples,
+                "Guidance:",
+                "- For multiple_choice, set correct_answer to the single letter and leave correct_answers blank.",
+                "- For select_all_that_apply, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
+                "- Provide concise but instructive rationales for each option.",
+                "- Provide a reputable resource_link and a human-readable resource_source for each question."
             ])
 
             response = model.generate_content(prompt)
@@ -308,6 +382,7 @@ if "questions" in st.session_state and st.session_state.questions:
             else:
                 st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)}")
 
-        # Debug: raw JSON
-        with st.expander("Show raw JSON"):
-            st.code(st.session_state.get("raw_output", ""), language="json")
+        # Debug: raw output
+        with st.expander("Show raw output"):
+            lang = "csv" if st.session_state.get("raw_format") == "csv" else "json"
+            st.code(st.session_state.get("raw_output", ""), language=lang)
