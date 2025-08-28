@@ -29,6 +29,20 @@ def parse_questions_from_csv(output_text):
         txt = re.sub(r"^```[a-zA-Z0-9]*\s*", "", txt)
         txt = re.sub(r"\s*```$", "", txt)
 
+    # If the model returned extra UI or noise before the CSV header, slice to start at the header
+    header_pattern = re.compile(
+        r"^\s*question_type\s*,\s*question\s*,\s*option_a\s*,\s*option_b\s*,\s*option_c\s*,\s*option_d\s*,\s*option_e\s*,\s*option_f\s*,\s*correct_answer\s*,\s*correct_answers\s*,\s*rationale_a\s*,\s*rationale_b\s*,\s*rationale_c\s*,\s*rationale_d\s*,\s*rationale_e\s*,\s*rationale_f\s*,\s*youtube_search_term\s*$",
+        re.IGNORECASE,
+    )
+    lines = txt.splitlines()
+    start_idx = None
+    for i, line in enumerate(lines):
+        if header_pattern.match(line.strip().lower()):
+            start_idx = i
+            break
+    if start_idx is not None and start_idx > 0:
+        txt = "\n".join(lines[start_idx:])
+
     try:
         reader = csv.DictReader(io.StringIO(txt), restkey="_rest", skipinitialspace=True)
     except Exception:
