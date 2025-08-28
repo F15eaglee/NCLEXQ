@@ -552,3 +552,13 @@ if "questions" in st.session_state and st.session_state.questions:
         with st.expander("Show raw output"):
             lang = "csv" if st.session_state.get("raw_format") == "csv" else "json"
             st.code(st.session_state.get("raw_output", ""), language=lang)
+else:
+    # Even if parsing failed, expose the raw output for debugging
+    raw = st.session_state.get("raw_output", "")
+    if raw:
+        st.markdown("### Debug: raw model output")
+        # Heuristic to guess language for code highlighting
+        guess_lang = "json" if raw.strip().startswith("{") else "csv"
+        with st.expander("Show raw output"):
+            st.code(raw, language=guess_lang)
+            st.download_button("Download raw output", raw, file_name="raw_output.txt")
