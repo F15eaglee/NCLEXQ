@@ -208,7 +208,7 @@ def parse_questions(output_text: str) -> tuple[list, str]:
     return parsed, error_msg
 
 # --- Streamlit UI with Form ---
-st.title("🏥 NCLEX Smart Question and Rationale Tutor 🏥")
+st.title("🏥 NCLEX Smart Q&A Tutor 🏥")
 st.subheader("Developed by Glenn Heydolph ADN '26 DSC, BSN '27 UCF")
 
 with st.form("quiz_settings"):
