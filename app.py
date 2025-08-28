@@ -3,6 +3,7 @@ import re
 import json
 import csv
 import io
+import urllib.parse as urlparse
 import streamlit as st
 import google.generativeai as genai
 
@@ -35,17 +36,6 @@ def parse_questions_from_csv(output_text):
 
     if not reader.fieldnames:
         return []
-
-    def _looks_like_url(s: str) -> bool:
-        return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
-
-    def _clean_url(s: str) -> str:
-        s = (s or "").strip()
-        # Remove stray leading/trailing quotes the model may have added
-        s = s.strip('"').strip()
-        if s.startswith("www."):
-            s = "https://" + s
-        return s
 
     for row in reader:
         question_text = (row.get("question_text") or "").strip()
@@ -97,21 +87,8 @@ def parse_questions_from_csv(output_text):
                 r = row.get(f"{L}_rationale")
             rationales_map[L] = (r or "").strip()
 
-        resource_link = _clean_url(row.get("resource_link"))
-        resource_source = (row.get("resource_source") or "").strip().strip('"').strip()
-
-        # If the model produced extra trailing columns, try to recover a URL from them
-        extras = row.get("_rest") or []
-        if (not resource_link or not _looks_like_url(resource_link)) and extras:
-            for val in extras:
-                val_clean = _clean_url(val)
-                if _looks_like_url(val_clean):
-                    resource_link = val_clean
-                    break
-
-        # If resource_source contains a URL and link does not, swap
-        if (not _looks_like_url(resource_link)) and _looks_like_url(resource_source):
-            resource_link, resource_source = _clean_url(resource_source), resource_link
+        # Optional YouTube search term
+        search_term = (row.get("search_term") or "").strip()
 
         if question_text and choices and correct_set:
             qtype = "sata" if is_sata_by_type else "mcq"
@@ -121,8 +98,7 @@ def parse_questions_from_csv(output_text):
                 "choices": choices,
                 "correct_set": sorted(list(correct_set)),
                 "rationales": rationales_map,
-                "resource_link": resource_link,
-                "resource_source": resource_source,
+                "search_term": search_term,
             })
 
     return parsed
@@ -199,8 +175,6 @@ def parse_questions(output_text):
                 rationales_map[only] = (rationales.get("correct", "") or "").strip()
 
         qtype = "sata" if is_sata else "mcq"
-        resource_link = (q.get("resource_link") or "").strip()
-        resource_source = (q.get("resource_source") or "").strip()
 
         if question_text and choices and correct_set:
             parsed.append({
@@ -208,9 +182,8 @@ def parse_questions(output_text):
                 "type": qtype,
                 "choices": choices,                 # ["A. ...", "B. ...", ...]
                 "correct_set": sorted(list(correct_set)),
-                "rationales": rationales_map,       # { "A": "...", ... }
-                "resource_link": resource_link,
-                "resource_source": resource_source
+                "rationales": rationales_map,      # { "A": "...", ... }
+                "search_term": (q.get("search_term") or "").strip()
             })
 
     if parsed:
@@ -232,7 +205,7 @@ csv_header = (
     "option_A,option_B,option_C,option_D,option_E,option_F,"
     "correct_answer,correct_answers,"
     "rationale_A,rationale_B,rationale_C,rationale_D,rationale_E,rationale_F,"
-    "resource_link,resource_source"
+    "search_term"
 )
 
 csv_examples = "\n".join([
@@ -242,7 +215,7 @@ csv_examples = "\n".join([
         '1,multiple_choice,"What is the primary treatment for condition X?",'
         '"Option A","Option B","Option C","Option D",,,A,,'
         '"Rationale A","Rationale B","Rationale C","Rationale D",,,'
-        '"https://www.youtube.com","Youtube"'
+        '"heart failure treatment nursing"'
     ),
     # SATA example row
     (
@@ -250,7 +223,7 @@ csv_examples = "\n".join([
         '"Option A","Option B","Option C","Option D","Option E","Option F",,'
         '"A;C;F",'
         '"Rationale A","Rationale B","Rationale C","Rationale D","Rationale E","Rationale F",'
-        '"https://www.youtube.com","Youtube"'
+        '"heart failure patient teaching nursing"'
     ),
 ]).strip()
 
@@ -264,7 +237,7 @@ if st.button("Generate Questions"):
                 f"Create {num_questions} {difficulty} NCLEX-style questions that are unique on {topic} with answers and rationales.",
                 f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F);",
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
-                "For each question, add a URL and Website Name related to the generated question (typically from YouTube) for deeper study on the topic of the question.  Do not use meme or similar links.",
+                "For each question generate a search term to be used in searching youtube for related content for the question.",
                 "If anything unrelated to nursing is prompted, ignore it.",
                 "Output CSV only. Do not include any text or Markdown code fences before or after the CSV.",
                 "Quote any field containing commas or newlines with double quotes. Escape embedded double quotes by doubling them.",
@@ -362,19 +335,15 @@ if "questions" in st.session_state and st.session_state.questions:
                     st.error(f"❌ Incorrect. Correct answer(s): {', '.join(sorted(correct_set))}")
                 st.session_state.scored_questions[q_index] = True
 
-            # Resource link (shown above rationales)
-            rl = (question.get("resource_link") or "").strip()
-            rs = (question.get("resource_source") or "").strip()
-            if rl:
-                # Fallback visible text if source missing: use domain from URL
-                if not rs:
-                    try:
-                        domain = re.sub(r"^https?://(www\.)?", "", rl).split("/")[0]
-                        rs = domain or "Open resource"
-                    except Exception:
-                        rs = "Open resource"
-                st.markdown("#### 📚 Resource")
-                st.markdown(f"Dig deeper... [{rs}]({rl})")
+            # YouTube search helper (shown above rationales)
+            search_term = (question.get("search_term") or "").strip()
+            if not search_term:
+                # Fallback to question text with NCLEX tag
+                search_term = f"{question['q']} NCLEX"
+            yt_url = f"https://www.youtube.com/results?search_query={urlparse.quote(search_term)}"
+            st.markdown("#### 🔎 Find related videos")
+            st.caption(search_term)
+            st.link_button("Search on YouTube", yt_url, help="Opens YouTube results in a new tab")
 
             st.markdown("#### 💡 Rationales")
             for L in letters_order:
