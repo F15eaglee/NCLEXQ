@@ -360,7 +360,7 @@ if "questions" in st.session_state and st.session_state.questions:
             if not search_term:
                 # Fallback to question text with NCLEX tag
                 search_term = f"{question['q']} NCLEX"
-            yt_url = f"https://www.youtube.com/results?search_query={urlparse.quote(search_term)}"
+            yt_url = f"https://www.youtube.com/results?search_query=Nursing {urlparse.quote(search_term)}"
             st.markdown("#### 🔎 Find related videos")
             # Short caption: use at most 60 chars
             short_caption = search_term if len(search_term) <= 60 else (search_term[:57] + "...")
