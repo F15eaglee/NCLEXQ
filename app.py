@@ -570,14 +570,6 @@ if "questions" in st.session_state and st.session_state.questions:
             else:
                 st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)}")
 
-        # Bottom fallback navigation (in case state glitches)
-        if q_index < len(st.session_state.questions) - 1 and st.session_state.scored_questions.get(q_index, False):
-            if st.button("Next Question", key=f"next_bottom_{q_index}"):
-                st.session_state.q_index = q_index + 1
-                st.session_state.answered = False
-                st.session_state.selected_letters = []
-                st.rerun()
-
         # If fewer questions than requested were generated, offer to generate the missing ones
         total_q = len(st.session_state.questions)
         expected_q = st.session_state.get("expected_count", total_q)
