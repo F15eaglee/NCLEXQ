@@ -352,6 +352,7 @@ if st.button("Generate Questions"):
             st.session_state.score = 0
             st.session_state.scored_questions = {}
             st.session_state.completed = False
+            st.session_state.expected_count = num_questions
 
             if not questions:
                 st.error("❌ Could not parse any questions. Try again or check raw output.")
@@ -481,6 +482,71 @@ if "questions" in st.session_state and st.session_state.questions:
                 st.session_state.answered = False
                 st.session_state.selected_letters = []
                 st.rerun()
+
+        # If fewer questions than requested were generated, offer to generate the missing ones
+        total_q = len(st.session_state.questions)
+        expected_q = st.session_state.get("expected_count", total_q)
+        if total_q < expected_q:
+            missing_q = expected_q - total_q
+            st.warning(f"Only {total_q}/{expected_q} questions generated. {missing_q} missing.")
+            if st.button(f"Generate {missing_q} more", key="gen_more"):
+                try:
+                    # Reuse the same improved prompt pattern with the missing count
+                    csv_examples = "\n".join([
+                        "question_type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct_answer,correct_answers,rationale_a,rationale_b,rationale_c,rationale_d,rationale_e,rationale_f,youtube_search_term",
+                        'multiple_choice,"Which action takes priority for a client with acute pulmonary edema?","Administer oxygen","Encourage oral fluids","Obtain daily weight","Teach low-sodium diet",,A,"Improves oxygenation immediately","Fluids may worsen overload","Weight is monitoring, not priority","Teaching is not priority in acute event",,,"pulmonary edema"',
+                        'SATA,"Select all initial nursing actions for suspected hypoglycemia.","Check blood glucose","Give long-acting insulin","Provide 15 g fast carbs","Reassess in 15 min","Call rapid response if LOC declines","Start IV access",,"A;C;F","Confirms diagnosis","Contraindicated; will worsen","Raises glucose quickly","Ensures treatment worked","Escalate if worsening","Allows dextrose/med access","hypoglycemia care"',
+                    ])
+
+                    improved_prompt_more = f"""
+                    # ROLE & GOAL
+                    You are an expert NCLEX Test Development Specialist and a seasoned Nursing Educator. Your goal is to generate high-quality, unique practice questions that rigorously test a nursing student's clinical judgment and readiness for the NCLEX exam.
+
+                    # CORE TASK
+                    Generate exactly {missing_q} NCLEX-style practice questions on the topic of "{topic}". The questions should be of {difficulty} difficulty.
+
+                    # QUESTION SPECIFICATIONS
+                    1.  **Question Mix**:
+                        * Exactly {question_type_percent}% of the questions must be **Select All That Apply (SATA)**.
+                        * The remaining questions must be standard **Multiple-Choice (MCQ)**.
+                    2.  **Content Quality**:
+                        * Questions must focus on application, analysis, and evaluation—not simple recall.
+                        * Scenarios should be realistic and reflect common clinical situations.
+                        * Incorrect answer choices (distractors) must be plausible and educationally valuable.
+                    3.  **Answer Choices**:
+                        * MCQ questions must have exactly 4 choices (A, B, C, D).
+                        * SATA questions must have exactly 6 choices (A, B, C, D, E, F).
+
+                    # OUTPUT FORMATTING
+                    1.  **Strictly CSV Output**: Your entire response MUST be a valid CSV file. Do NOT include any introductory text, explanations, or markdown code fences before or after the CSV data.
+                    2.  **CSV Header**: Use this exact header row and column order:
+                        `question_type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct_answer,correct_answers,rationale_a,rationale_b,rationale_c,rationale_d,rationale_e,rationale_f,youtube_search_term`
+                    3.  **Content Logic**:
+                        * Provide a concise rationale for every answer choice.
+                        * Provide a short YouTube search term related to the question and answer.
+                        * For MCQ: use `correct_answer` only; leave `correct_answers` blank.
+                        * For SATA: use `correct_answers` with semicolons; leave `correct_answer` blank.
+
+                    # GUARDRAIL
+                    If the topic "{topic}" is not a recognized nursing or medical subject, respond with ONLY the CSV header line and nothing else.
+
+                    # EXAMPLES
+                    Follow the formatting and logic demonstrated in these examples precisely.
+                    {csv_examples}
+                    """
+
+                    resp_more = model.generate_content(improved_prompt_more)
+                    out_more = resp_more.text if hasattr(resp_more, "text") else str(resp_more)
+                    new_qs = parse_questions(out_more)
+                    if new_qs:
+                        st.session_state.questions.extend(new_qs)
+                        st.success(f"Added {len(new_qs)} more question(s).")
+                        st.rerun()
+                    else:
+                        st.error("Could not parse additional questions. Check raw output.")
+                        st.session_state.raw_output = out_more
+                except Exception as e:
+                    st.error(f"Error generating more: {e}")
 
         # Debug: raw output
         with st.expander("Show raw output"):
