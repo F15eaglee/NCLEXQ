@@ -257,7 +257,7 @@ def generate_questions(topic: str, difficulty: str, num_questions: int, question
     try:
         response = model.generate_content(
             prompt,
-            generation_config={"max_output_tokens": 4096}  # Increase token limit to avoid truncation
+            generation_config={"max_output_tokens": 16384}  # Increase token limit to avoid truncation
         )
         return response.text if hasattr(response, "text") else str(response)
     except Exception as e:
@@ -268,6 +268,8 @@ if submitted:
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
+                # Force fresh generation each submit by clearing the cached result
+                generate_questions.clear()
                 output_text = generate_questions(topic, difficulty, num_questions, question_type_percent)
                 questions, parse_error = parse_questions(output_text)
                 if questions:
@@ -380,6 +382,8 @@ if st.session_state.get("questions"):
             st.warning(f"Only {total_q}/{expected_q} questions generated.")
             if st.button(f"Generate {missing_q} more"):
                 try:
+                    # Ensure additional generations are not served from cache
+                    generate_questions.clear()
                     output_text = generate_questions(topic, difficulty, missing_q, question_type_percent)
                     new_qs, parse_error = parse_questions(output_text)
                     if new_qs:
