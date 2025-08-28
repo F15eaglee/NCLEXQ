@@ -30,7 +30,7 @@ def parse_questions_from_csv(output_text):
         txt = re.sub(r"\s*```$", "", txt)
 
     try:
-        reader = csv.DictReader(io.StringIO(txt), restkey="_rest")
+        reader = csv.DictReader(io.StringIO(txt), restkey="_rest", skipinitialspace=True)
     except Exception:
         return []
 
@@ -45,11 +45,11 @@ def parse_questions_from_csv(output_text):
         return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
 
     for row in reader:
-        # Support both old "question_text" and new "question" column
+        # Support both old "question_text" and new lowercase "question" column
         question_text = (row.get("question") or row.get("question_text") or "").strip()
         qt_raw = (row.get("question_type") or "").strip().lower()
 
-        # Options in columns option_A .. option_H or A..H
+        # Options in columns option_a..option_f (lowercase) and option_A..option_H or A..H
         all_letters = [chr(c) for c in range(ord("A"), ord("H") + 1)]
         options = {}
         for L in all_letters:
@@ -81,6 +81,7 @@ def parse_questions_from_csv(output_text):
         if is_sata_by_type:
             ca_multi = (row.get("correct_answers") or "").strip()
             if ca_multi:
+                # Prefer semicolon per spec, but accept commas/whitespace too
                 parts = re.split(r"[;,\s]+", ca_multi)
                 for ans in parts:
                     L = ans.strip().upper()
@@ -102,8 +103,8 @@ def parse_questions_from_csv(output_text):
             )
             rationales_map[L] = (r or "").strip()
 
-    # Optional YouTube search term (robust extraction)
-    # Prefer new youtube_search_term, fallback to older names
+        # Optional YouTube search term (robust extraction)
+        # Prefer new youtube_search_term, fallback to older names
         search_term = _clean_text(row.get("youtube_search_term"))
         if not search_term:
             search_term = _clean_text(row.get("search_term"))
