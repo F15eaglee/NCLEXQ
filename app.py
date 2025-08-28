@@ -37,17 +37,29 @@ def parse_questions_from_csv(output_text):
     if not reader.fieldnames:
         return []
 
+    # Helpers for cleaning/recognizing text and URLs
+    def _clean_text(s: str) -> str:
+        return (s or "").strip().strip('"').strip()
+
+    def _looks_like_url(s: str) -> bool:
+        return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
+
     for row in reader:
-        question_text = (row.get("question_text") or "").strip()
+        # Support both old "question_text" and new "question" column
+        question_text = (row.get("question") or row.get("question_text") or "").strip()
         qt_raw = (row.get("question_type") or "").strip().lower()
 
         # Options in columns option_A .. option_H or A..H
         all_letters = [chr(c) for c in range(ord("A"), ord("H") + 1)]
         options = {}
         for L in all_letters:
-            val = row.get(f"option_{L}")
-            if val is None:
-                val = row.get(L)
+            # Accept option_A, option_a, A, a
+            val = (
+                row.get(f"option_{L}")
+                or row.get(f"option_{L.lower()}")
+                or row.get(L)
+                or row.get(L.lower())
+            )
             val = (val or "").strip()
             if val:
                 options[L] = val
@@ -82,19 +94,19 @@ def parse_questions_from_csv(output_text):
         # Rationales map
         rationales_map = {}
         for L in letters:
-            r = row.get(f"rationale_{L}")
-            if r is None:
-                r = row.get(f"{L}_rationale")
+            # Accept rationale_A, rationale_a, A_rationale
+            r = (
+                row.get(f"rationale_{L}")
+                or row.get(f"rationale_{L.lower()}")
+                or row.get(f"{L}_rationale")
+            )
             rationales_map[L] = (r or "").strip()
 
-        # Optional YouTube search term (robust extraction)
-        def _clean_text(s: str) -> str:
-            return (s or "").strip().strip('"').strip()
-
-        def _looks_like_url(s: str) -> bool:
-            return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
-
-        search_term = _clean_text(row.get("search_term"))
+    # Optional YouTube search term (robust extraction)
+    # Prefer new youtube_search_term, fallback to older names
+        search_term = _clean_text(row.get("youtube_search_term"))
+        if not search_term:
+            search_term = _clean_text(row.get("search_term"))
         if not search_term:
             # Try alternate header names
             for alt in ("search term", "search", "youtube_search", "youtube search"):
@@ -250,24 +262,53 @@ csv_examples = "\n".join([
 
 # --- Generate Questions ---
 if st.button("Generate Questions"):
-    with st.spinner("Calling Gemini..."):
+    with st.spinner("Calling Gemini 2.5 fast..."):
         try:
-            prompt = "\n".join([
-                f"You are a Nursing school Instructor preparing students for the NCLEX exam.",
-                f"Create {num_questions} {difficulty} NCLEX-style questions that are unique on {topic} with answers and rationales.",
-                f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F);",
-                "the rest should be multiple_choice with 4 answer choices (A-D).",
-                "For each question generate a no more than 3 word search term to be used in searching youtube for content related to the question.",
-                "If anything unrelated to nursing is prompted, ignore it.",
-                "Output CSV only. Do not include any text or Markdown code fences before or after the CSV.",
-                "Quote any field containing commas or newlines with double quotes. Escape embedded double quotes by doubling them.",
-                "Use the exact header and column order below. Leave unused option/rationale cells blank as needed.",
-                csv_examples,
-                "Guidance:",
-                "- For multiple_choice, set correct_answer to the single letter and leave correct_answers blank.",
-                "- For SATA, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
-                "- Provide concise but instructive rationales for each option."
+            # Build improved prompt with updated CSV schema and examples
+            csv_examples = "\n".join([
+                "question_type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct_answer,correct_answers,rationale_a,rationale_b,rationale_c,rationale_d,rationale_e,rationale_f,youtube_search_term",
+                'multiple_choice,"Which action takes priority for a client with acute pulmonary edema?","Administer oxygen","Encourage oral fluids","Obtain daily weight","Teach low-sodium diet",,A,"Improves oxygenation immediately","Fluids may worsen overload","Weight is monitoring, not priority","Teaching is not priority in acute event",,,"pulmonary edema"',
+                'SATA,"Select all initial nursing actions for suspected hypoglycemia.","Check blood glucose","Give long-acting insulin","Provide 15 g fast carbs","Reassess in 15 min","Call rapid response if LOC declines","Start IV access",,"A;C;F","Confirms diagnosis","Contraindicated; will worsen","Raises glucose quickly","Ensures treatment worked","Escalate if worsening","Allows dextrose/med access","hypoglycemia care"',
             ])
+
+            improved_prompt = f"""
+            # ROLE & GOAL
+            You are an expert NCLEX Test Development Specialist and a seasoned Nursing Educator. Your goal is to generate high-quality, unique practice questions that rigorously test a nursing student's clinical judgment and readiness for the NCLEX exam.
+
+            # CORE TASK
+            Generate exactly {num_questions} NCLEX-style practice questions on the topic of "{topic}". The questions should be of {difficulty} difficulty.
+
+            # QUESTION SPECIFICATIONS
+            1.  **Question Mix**:
+                * Exactly {question_type_percent}% of the questions must be **Select All That Apply (SATA)**.
+                * The remaining questions must be standard **Multiple-Choice (MCQ)**.
+            2.  **Content Quality**:
+                * Questions must focus on application, analysis, and evaluation—not simple recall.
+                * Scenarios should be realistic and reflect common clinical situations.
+                * Incorrect answer choices (distractors) must be plausible and educationally valuable.
+            3.  **Answer Choices**:
+                * MCQ questions must have exactly 4 choices (A, B, C, D).
+                * SATA questions must have exactly 6 choices (A, B, C, D, E, F).
+
+            # OUTPUT FORMATTING
+            1.  **Strictly CSV Output**: Your entire response MUST be a valid CSV file. Do NOT include any introductory text, explanations, or markdown code fences (like ```csv) before or after the CSV data.
+            2.  **CSV Header**: The CSV data must start with the following exact header row. The column order is critical.
+                `question_type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct_answer,correct_answers,rationale_a,rationale_b,rationale_c,rationale_d,rationale_e,rationale_f,youtube_search_term`
+            3.  **Content Logic**:
+                * **Rationales**: Provide a concise and instructive rationale for **every** answer choice (both correct and incorrect).
+                * **YouTube Search Term**: For each question, provide a simple, 2-3 word search term for finding a relevant educational video.
+                * **Correct Answer Columns (CRITICAL)**:
+                    * For **MCQ** questions: Put the single correct letter in the `correct_answer` column. The `correct_answers` column MUST be blank.
+                    * For **SATA** questions: Put the semicolon-separated list of correct letters (e.g., A;C;F) in the `correct_answers` column. The `correct_answer` column MUST be blank.
+
+            # GUARDRAIL
+            If the topic "{topic}" is not a recognized nursing or medical subject, respond with ONLY the CSV header line and nothing else.
+
+            # EXAMPLES
+            Follow the formatting and logic demonstrated in these examples precisely.
+            {csv_examples}
+            """
+            prompt = improved_prompt
 
             response = model.generate_content(prompt)
             output_text = response.text if hasattr(response, "text") else str(response)
