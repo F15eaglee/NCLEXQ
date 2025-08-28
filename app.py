@@ -365,8 +365,16 @@ if "questions" in st.session_state and st.session_state.questions:
             # Resource link (shown above rationales)
             rl = (question.get("resource_link") or "").strip()
             rs = (question.get("resource_source") or "").strip()
-            st.markdown("#### 📚 Resource")
-            st.markdown(f"Dig deeper... [{rs}]({rl})")
+            if rl:
+                # Fallback visible text if source missing: use domain from URL
+                if not rs:
+                    try:
+                        domain = re.sub(r"^https?://(www\.)?", "", rl).split("/")[0]
+                        rs = domain or "Open resource"
+                    except Exception:
+                        rs = "Open resource"
+                st.markdown("#### 📚 Resource")
+                st.markdown(f"Dig deeper... [{rs}]({rl})")
 
             st.markdown("#### 💡 Rationales")
             for L in letters_order:
