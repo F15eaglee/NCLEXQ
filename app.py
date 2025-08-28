@@ -120,7 +120,7 @@ def parse_questions(output_text):
     try:
         data = json.loads(txt)
     except Exception:
-        st.error("❌ Could not parse CSV or JSON. Check the raw output.")
+        st.error("❌ Could not parse CSV/JSON. Check the raw output.")
         return []
 
     if not isinstance(data, dict) or "questions" not in data or not isinstance(data["questions"], list):
@@ -248,7 +248,7 @@ if st.button("Generate Questions"):
                 "- For multiple_choice, set correct_answer to the single letter and leave correct_answers blank.",
                 "- For select_all_that_apply, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
                 "- Provide concise but instructive rationales for each option.",
-                "- Provide a reputable resource_link to youtube.com and a human-readable resource_source for each question."
+                "- Provide a reputable hyperlink for resource_link related to the question and a human-readable source name as resource_source for each question."
             ])
 
             response = model.generate_content(prompt)
