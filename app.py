@@ -219,6 +219,29 @@ with st.form("quiz_settings"):
     submitted = st.form_submit_button("Generate Questions")
 
 # --- Generate Questions ---
+
+# --- Batching logic for safe question generation ---
+def batched_generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str, batch_size: int = 2) -> str:
+    """Generate questions in batches to avoid model truncation, then merge CSVs."""
+    all_outputs = []
+    questions_remaining = num_questions
+    while questions_remaining > 0:
+        n = min(batch_size, questions_remaining)
+        generate_questions.clear()
+        out = generate_questions(topic, difficulty, n, question_type_percent)
+        all_outputs.append(out.strip())
+        questions_remaining -= n
+    # Remove duplicate headers, keep only the first
+    merged = []
+    for i, chunk in enumerate(all_outputs):
+        lines = chunk.splitlines()
+        if i == 0:
+            merged.extend(lines)
+        else:
+            merged.extend([l for l in lines if not l.lower().startswith("question_type,")])
+    return "\n".join(merged)
+
+# --- Original function, still cached for single batch ---
 @st.cache_data
 def generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str) -> str:
     """Cache the model response to avoid redundant API calls."""
@@ -257,7 +280,7 @@ def generate_questions(topic: str, difficulty: str, num_questions: int, question
     try:
         response = model.generate_content(
             prompt,
-            generation_config={"max_output_tokens": 65536}  # Increase token limit to avoid truncation
+            generation_config={"max_output_tokens": 4096}  # Use a safe, realistic token limit
         )
         return response.text if hasattr(response, "text") else str(response)
     except Exception as e:
@@ -268,9 +291,8 @@ if submitted:
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                # Force fresh generation each submit by clearing the cached result
-                generate_questions.clear()
-                output_text = generate_questions(topic, difficulty, num_questions, question_type_percent)
+                # Use batching to avoid truncation
+                output_text = batched_generate_questions(topic, difficulty, num_questions, question_type_percent, batch_size=2)
                 questions, parse_error = parse_questions(output_text)
                 if questions:
                     st.session_state.questions = questions
@@ -382,9 +404,7 @@ if st.session_state.get("questions"):
             st.warning(f"Only {total_q}/{expected_q} questions generated.")
             if st.button(f"Generate {missing_q} more"):
                 try:
-                    # Ensure additional generations are not served from cache
-                    generate_questions.clear()
-                    output_text = generate_questions(topic, difficulty, missing_q, question_type_percent)
+                    output_text = batched_generate_questions(topic, difficulty, missing_q, question_type_percent, batch_size=2)
                     new_qs, parse_error = parse_questions(output_text)
                     if new_qs:
                         st.session_state.questions.extend(new_qs)
