@@ -31,6 +31,14 @@ def parse_questions_from_csv(output_text):
 
     # Remove potential UTF-8 BOMs anywhere (common from LLMs or copy/paste)
     txt = txt.replace("\ufeff", "")
+    # Normalize smart quotes and NBSP to avoid breaking CSV parsing
+    txt = (
+        txt.replace("\u201c", '"')
+           .replace("\u201d", '"')
+           .replace("\u2018", "'")
+           .replace("\u2019", "'")
+           .replace("\xa0", " ")
+    )
 
     # If the model returned extra UI or noise before the CSV header, slice to start at the header
     header_pattern = re.compile(
@@ -129,21 +137,37 @@ def parse_questions_from_csv(output_text):
             "select all that apply (sata)",
         }
 
-        # Collect correct answers
+        # Collect correct answers and detect a common MCQ misalignment where option_f holds the single-letter answer
         correct_set = set()
         ca_multi_raw = (row.get("correct_answers") or "").strip()
         ca_single_raw = (row.get("correct_answer") or "").strip()
 
+        def _is_single_letter(s: str) -> bool:
+            return bool(re.fullmatch(r"[A-Ha-h]", (s or "").strip()))
+
+        # Misalignment heuristic: MCQ row where the model placed the single-letter answer into option_f,
+        # and 'correct_answer' contains a sentence/rationale instead of a single letter.
+        misaligned_mcq = (
+            not is_sata_by_type
+            and _is_single_letter(row.get("option_f"))
+            and not _is_single_letter(ca_single_raw)
+            and not _looks_like_letter_list(ca_multi_raw)
+        )
+
         if is_sata_by_type:
             if ca_multi_raw:
                 # Prefer semicolon per spec, but accept commas/whitespace too
-                parts = re.split(r"[;,\s]+", ca_multi_raw)
+                parts = re.split(r"[;\,\s]+", ca_multi_raw)
                 for ans in parts:
                     L = ans.strip().upper()
                     if L in letters:
                         correct_set.add(L)
         else:
-            ca = ca_single_raw.upper()
+            if misaligned_mcq:
+                # Use the option_f single letter as the true correct answer
+                ca = (row.get("option_f") or "").strip().upper()
+            else:
+                ca = ca_single_raw.upper()
             if ca in letters:
                 correct_set.add(ca)
 
@@ -165,7 +189,7 @@ def parse_questions_from_csv(output_text):
 
         rationales_map = {}
         youtube_term_from_shift = ""
-        if not is_sata_by_type and ca_single_raw and ca_multi_raw and not _looks_like_letter_list(ca_multi_raw):
+        if not is_sata_by_type and ca_single_raw and ca_multi_raw and not _looks_like_letter_list(ca_multi_raw) and not misaligned_mcq:
             # Shift: correct_answers -> rationale_A; rationale_A->B; ...; rationale_E->F; rationale_F -> youtube term (if missing)
             shift_chain = {
                 "A": ca_multi_raw,
@@ -175,6 +199,24 @@ def parse_questions_from_csv(output_text):
                 "E": base_rats.get("D", ""),
                 "F": base_rats.get("E", ""),
             }
+            for L in letters:
+                rationales_map[L] = (shift_chain.get(L, base_rats.get(L, "")) or "").strip()
+            youtube_term_from_shift = (base_rats.get("F", "") or "").strip()
+        elif misaligned_mcq:
+            # Alternative shift for the option_f misplacement case:
+            # correct_answers -> rationale_A; rationale_A->B; rationale_B->C; ...; rationale_E->F; rationale_F -> youtube (if needed)
+            shift_chain = {
+                "A": ca_multi_raw,
+                "B": base_rats.get("A", ""),
+                "C": base_rats.get("B", ""),
+                "D": base_rats.get("C", ""),
+                "E": base_rats.get("D", ""),
+                "F": base_rats.get("E", ""),
+            }
+            # Drop spurious option F if it's just a single letter placed as the answer
+            if "F" in letters and _is_single_letter(row.get("option_f")):
+                letters = [L for L in letters if L != "F"]
+                choices = [f"{L}. {options[L]}" for L in letters]
             for L in letters:
                 rationales_map[L] = (shift_chain.get(L, base_rats.get(L, "")) or "").strip()
             youtube_term_from_shift = (base_rats.get("F", "") or "").strip()
