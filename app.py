@@ -78,30 +78,56 @@ def parse_questions_from_csv(output_text):
 
         # Collect correct answers
         correct_set = set()
+        ca_multi_raw = (row.get("correct_answers") or "").strip()
+        ca_single_raw = (row.get("correct_answer") or "").strip()
+
         if is_sata_by_type:
-            ca_multi = (row.get("correct_answers") or "").strip()
-            if ca_multi:
+            if ca_multi_raw:
                 # Prefer semicolon per spec, but accept commas/whitespace too
-                parts = re.split(r"[;,\s]+", ca_multi)
+                parts = re.split(r"[;,\s]+", ca_multi_raw)
                 for ans in parts:
                     L = ans.strip().upper()
                     if L in letters:
                         correct_set.add(L)
         else:
-            ca = (row.get("correct_answer") or "").strip().upper()
+            ca = ca_single_raw.upper()
             if ca in letters:
                 correct_set.add(ca)
 
-        # Rationales map
-        rationales_map = {}
-        for L in letters:
-            # Accept rationale_A, rationale_a, A_rationale
-            r = (
-                row.get(f"rationale_{L}")
-                or row.get(f"rationale_{L.lower()}")
-                or row.get(f"{L}_rationale")
+        # Rationales map (with MCQ misalignment correction if needed)
+        def _get_rationale_cell(letter: str) -> str:
+            return (
+                row.get(f"rationale_{letter}")
+                or row.get(f"rationale_{letter.lower()}")
+                or row.get(f"{letter}_rationale")
+                or ""
             )
-            rationales_map[L] = (r or "").strip()
+
+        # Base rationales from row
+        base_rats = {L: (_get_rationale_cell(L) or "").strip() for L in all_letters}
+
+        # Detect misalignment for MCQ where correct_answers accidentally contains rationale text
+        def _looks_like_letter_list(s: str) -> bool:
+            return bool(re.fullmatch(r"\s*[A-Ha-h](\s*[;,]\s*[A-Ha-h])*\s*", s or ""))
+
+        rationales_map = {}
+        youtube_term_from_shift = ""
+        if not is_sata_by_type and ca_single_raw and ca_multi_raw and not _looks_like_letter_list(ca_multi_raw):
+            # Shift: correct_answers -> rationale_A; rationale_A->B; ...; rationale_E->F; rationale_F -> youtube term (if missing)
+            shift_chain = {
+                "A": ca_multi_raw,
+                "B": base_rats.get("A", ""),
+                "C": base_rats.get("B", ""),
+                "D": base_rats.get("C", ""),
+                "E": base_rats.get("D", ""),
+                "F": base_rats.get("E", ""),
+            }
+            for L in letters:
+                rationales_map[L] = (shift_chain.get(L, base_rats.get(L, "")) or "").strip()
+            youtube_term_from_shift = (base_rats.get("F", "") or "").strip()
+        else:
+            for L in letters:
+                rationales_map[L] = base_rats.get(L, "")
 
         # Optional YouTube search term (robust extraction)
         # Prefer new youtube_search_term, fallback to older names
@@ -122,6 +148,9 @@ def parse_questions_from_csv(output_text):
                 if candidate and not _looks_like_url(candidate):
                     search_term = candidate
                     break
+        # If we detected MCQ shift and youtube term still empty, backfill from shifted rationale_F value
+        if not search_term and youtube_term_from_shift:
+            search_term = _clean_text(youtube_term_from_shift)
 
         if question_text and choices and correct_set:
             qtype = "sata" if is_sata_by_type else "mcq"
