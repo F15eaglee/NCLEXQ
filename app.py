@@ -1,10 +1,10 @@
 import os
 import re
-import json
 import csv
 import io
 import streamlit as st
 import google.generativeai as genai
+
 
 # --- API key and model setup ---
 API_KEY = st.secrets.get("API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("API_KEY")
@@ -216,16 +216,16 @@ csv_examples = "\n".join([
     (
         '1,multiple_choice,"What is the primary treatment for condition X?",'
         '"Option A","Option B","Option C","Option D",,,A,,'
-        '"Rationale for A","Rationale for B","Rationale for C","Rationale for D",,,'
-        '"https://www.example.com/resource","Official NCLEX"'
+        '"Rationale A","Rationale B","Rationale C","Rationale D",,,'
+        '"https://www.youtube.com","Youtube"'
     ),
     # SATA example row
     (
-        '2,select_all_that_apply,"Select all the appropriate interventions for condition Y.",'
+        '2,SATA,"Select all the appropriate interventions for condition Y.",'
         '"Option A","Option B","Option C","Option D","Option E","Option F",,'
         '"A;C;F",'
         '"Rationale A","Rationale B","Rationale C","Rationale D","Rationale E","Rationale F",'
-        '"https://www.example.com/resource","Khan Academy"'
+        '"https://www.youtube.com","Youtube"'
     ),
 ]).strip()
 
@@ -237,7 +237,7 @@ if st.button("Generate Questions"):
             prompt = "\n".join([
                 f"You are a Nursing school Instructor preparing students for the NCLEX exam.",
                 f"Create {num_questions} {difficulty} NCLEX-style questions on {topic} with answers and rationales.",
-                f"{question_type_percent}% of questions should be select_all_that_apply with 6 answer choices (A-F);",
+                f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F);",
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
                 "If anything unrelated to nursing is prompted, ignore it.",
                 "Output CSV only. Do not include any text or Markdown code fences before or after the CSV.",
@@ -248,7 +248,7 @@ if st.button("Generate Questions"):
                 "- For multiple_choice, set correct_answer to the single letter and leave correct_answers blank.",
                 "- For select_all_that_apply, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
                 "- Provide concise but instructive rationales for each option.",
-                "- Provide a reputable resource_link and a human-readable resource_source for each question."
+                "- Provide a reputable resource_link to youtube.com and a human-readable resource_source for each question."
             ])
 
             response = model.generate_content(prompt)
@@ -340,9 +340,8 @@ if "questions" in st.session_state and st.session_state.questions:
             # Resource link (shown above rationales)
             rl = (question.get("resource_link") or "").strip()
             rs = (question.get("resource_source") or "").strip()
-            if rl:
-                st.markdown("#### 📚 Resource")
-                st.markdown(f"Dig deeper... [{rs}]({rl})")
+            st.markdown("#### 📚 Resource")
+            st.markdown(f"Dig deeper... [{rs}]({rl})")
 
             st.markdown("#### 💡 Rationales")
             for L in letters_order:
@@ -384,5 +383,8 @@ if "questions" in st.session_state and st.session_state.questions:
 
         # Debug: raw output
         with st.expander("Show raw output"):
+            tokens = st.session_state.get("tokens", [])
+            tokeninput = tokenizer.encode(prompt)
+            tokenoutput = tokenizer.decode(output_text)
             lang = "csv" if st.session_state.get("raw_format") == "csv" else "json"
             st.code(st.session_state.get("raw_output", ""), language=lang)
