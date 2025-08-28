@@ -44,12 +44,46 @@ def parse_questions_from_csv(output_text):
         txt = "\n".join(lines[start_idx:])
 
     try:
-        reader = csv.DictReader(io.StringIO(txt), restkey="_rest", skipinitialspace=True)
+        raw_rows = list(csv.reader(io.StringIO(txt), skipinitialspace=True))
     except Exception:
         return []
 
-    if not reader.fieldnames:
+    if not raw_rows:
         return []
+
+    # Header fields (normalized to lowercase for robust key lookup)
+    header_fields = [h.strip().strip('"').strip() for h in raw_rows[0]]
+    header_lower = [h.lower() for h in header_fields]
+    expected_len = len(header_lower)
+
+    # Build an iterable of normalized row dicts, handling common MCQ misalignment
+    norm_rows = []
+    for row in raw_rows[1:]:
+        # Skip empty rows
+        if not any((cell or "").strip() for cell in row):
+            continue
+
+        cells = [c for c in row]
+        # If the model omitted the blank correct_answers for MCQ, insert it after correct_answer
+        # Heuristic: row shorter by 1, MCQ type, and correct_answer looks like a single letter
+        if len(cells) == expected_len - 1:
+            qt_val = (cells[0] or "").strip().lower()
+            ca_val = (cells[8] if len(cells) > 8 else "").strip()
+            if qt_val != "sata" and re.fullmatch(r"[A-Ha-h]", ca_val or ""):
+                cells = cells[:9] + [""] + cells[9:]
+
+        # Pad or capture extras
+        extras = []
+        if len(cells) < expected_len:
+            cells = cells + [""] * (expected_len - len(cells))
+        elif len(cells) > expected_len:
+            extras = cells[expected_len:]
+            cells = cells[:expected_len]
+
+        row_dict = {header_lower[i]: (cells[i] or "") for i in range(expected_len)}
+        if extras:
+            row_dict["_rest"] = extras
+        norm_rows.append(row_dict)
 
     # Helpers for cleaning/recognizing text and URLs
     def _clean_text(s: str) -> str:
@@ -58,7 +92,7 @@ def parse_questions_from_csv(output_text):
     def _looks_like_url(s: str) -> bool:
         return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
 
-    for row in reader:
+    for row in norm_rows:
         # Support both old "question_text" and new lowercase "question" column
         question_text = (row.get("question") or row.get("question_text") or "").strip()
         qt_raw = (row.get("question_type") or "").strip().lower()
