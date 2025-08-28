@@ -397,17 +397,15 @@ if "questions" in st.session_state and st.session_state.questions:
                     st.error(f"❌ Incorrect. Correct answer(s): {', '.join(sorted(correct_set))}")
                 st.session_state.scored_questions[q_index] = True
 
-            # YouTube search helper (shown above rationales)
+            # YouTube search helper (uses provided field only)
             search_term = (question.get("search_term") or "").strip()
-            if not search_term:
-                # Fallback to question text with NCLEX tag
-                search_term = f"{question['q']} NCLEX"
-            yt_url = f"https://www.youtube.com/results?search_query=Nursing {urlparse.quote(search_term)}"
-            st.markdown("#### 🔎 Find related videos")
-            # Short caption: use at most 60 chars
-            short_caption = search_term if len(search_term) <= 60 else (search_term[:57] + "...")
-            st.caption(short_caption or "Related NCLEX videos")
-            st.link_button("Search on YouTube", yt_url, help="Opens YouTube results in a new tab")
+            if search_term:
+                yt_url = f"https://www.youtube.com/results?search_query=Nursing {urlparse.quote(search_term)}"
+                st.markdown("#### 🔎 Find related videos")
+                # Short caption: use at most 60 chars
+                short_caption = search_term if len(search_term) <= 60 else (search_term[:57] + "...")
+                st.caption(short_caption)
+                st.link_button("Search on YouTube", yt_url, help="Opens YouTube results in a new tab")
 
             st.markdown("#### 💡 Rationales")
             for L in letters_order:
