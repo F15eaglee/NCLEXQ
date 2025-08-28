@@ -264,6 +264,7 @@ if st.button("Generate Questions"):
                 f"Create {num_questions} {difficulty} NCLEX-style questions that are unique on {topic} with answers and rationales.",
                 f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F);",
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
+                "For each question, add a 'resource_link' (URL) and 'resource_source' (Website Name) field related to the generated question (typically from YouTube) for further study on the topic of the question.",
                 "If anything unrelated to nursing is prompted, ignore it.",
                 "Output CSV only. Do not include any text or Markdown code fences before or after the CSV.",
                 "Quote any field containing commas or newlines with double quotes. Escape embedded double quotes by doubling them.",
@@ -272,8 +273,7 @@ if st.button("Generate Questions"):
                 "Guidance:",
                 "- For multiple_choice, set correct_answer to the single letter and leave correct_answers blank.",
                 "- For select_all_that_apply, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
-                "- Provide concise but instructive rationales for each option.",
-                "- For each question, add a 'resource_link' and 'resource_source' field with a reputable online specific resource related to the question (YouTube) for further study on the question topic."
+                "- Provide concise but instructive rationales for each option."
             ])
 
             response = model.generate_content(prompt)
