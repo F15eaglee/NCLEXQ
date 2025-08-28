@@ -29,6 +29,9 @@ def parse_questions_from_csv(output_text):
         txt = re.sub(r"^```[a-zA-Z0-9]*\s*", "", txt)
         txt = re.sub(r"\s*```$", "", txt)
 
+    # Remove potential UTF-8 BOMs anywhere (common from LLMs or copy/paste)
+    txt = txt.replace("\ufeff", "")
+
     # If the model returned extra UI or noise before the CSV header, slice to start at the header
     header_pattern = re.compile(
         r"^\s*question_type\s*,\s*question\s*,\s*option_a\s*,\s*option_b\s*,\s*option_c\s*,\s*option_d\s*,\s*option_e\s*,\s*option_f\s*,\s*correct_answer\s*,\s*correct_answers\s*,\s*rationale_a\s*,\s*rationale_b\s*,\s*rationale_c\s*,\s*rationale_d\s*,\s*rationale_e\s*,\s*rationale_f\s*,\s*youtube_search_term\s*$",
@@ -53,6 +56,8 @@ def parse_questions_from_csv(output_text):
 
     # Header fields (normalized to lowercase for robust key lookup)
     header_fields = [h.strip().strip('"').strip() for h in raw_rows[0]]
+    if header_fields:
+        header_fields[0] = header_fields[0].lstrip("\ufeff")
     header_lower = [h.lower() for h in header_fields]
     expected_len = len(header_lower)
 
@@ -478,7 +483,7 @@ if "questions" in st.session_state and st.session_state.questions:
             # YouTube search helper (uses provided field only)
             search_term = (question.get("search_term") or "").strip()
             if search_term:
-                yt_url = f"https://www.youtube.com/results?search_query=Nursing {urlparse.quote(search_term)}"
+                yt_url = f"https://www.youtube.com/results?search_query={urlparse.quote(search_term)}"
                 st.markdown("#### 🔎 Find related videos")
                 # Short caption: use at most 60 chars
                 short_caption = search_term if len(search_term) <= 60 else (search_term[:57] + "...")
@@ -610,3 +615,18 @@ else:
         with st.expander("Show raw output"):
             st.code(raw, language=guess_lang)
             st.download_button("Download raw output", raw, file_name="raw_output.txt")
+
+    # Paste-and-parse CSV debug tool
+    with st.expander("Debug: Paste CSV to test parser"):
+        sample_csv = st.text_area("Paste CSV here:", height=200)
+        if st.button("Parse pasted CSV", key="parse_pasted"):
+            if not sample_csv.strip():
+                st.warning("Please paste some CSV text.")
+            else:
+                try:
+                    parsed_preview = parse_questions_from_csv(sample_csv)
+                    st.write(f"Parsed {len(parsed_preview)} question(s).")
+                    if parsed_preview:
+                        st.json(parsed_preview[0])
+                except Exception as e:
+                    st.error(f"Parser error: {e}")
