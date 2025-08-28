@@ -316,8 +316,10 @@ if st.session_state.get("questions"):
                 selected_display = st.radio("Choose one:", question["choices"], index=None, key=f"mcq_{q_index}")
                 selected_letters = [selected_display.split(".", 1)[0]] if selected_display else []
             else:
-                selected_display = st.multiselect("Select all that apply:", question["choices"], key=f"sata_{q_index}")
-                selected_letters = [c.split(".", 1)[0] for c in selected_display]
+                selected_letters = []
+                for L in letters_order:
+                    if st.checkbox(f"{L}. {label_map[L]}", key=f"sata_{q_index}_{L}"):
+                        selected_letters.append(L)
 
             submit_clicked = st.form_submit_button("Submit")
 
