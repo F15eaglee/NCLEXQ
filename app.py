@@ -257,7 +257,7 @@ def generate_questions(topic: str, difficulty: str, num_questions: int, question
     try:
         response = model.generate_content(
             prompt,
-            generation_config={"max_output_tokens": 16384}  # Increase token limit to avoid truncation
+            generation_config={"max_output_tokens": 65536}  # Increase token limit to avoid truncation
         )
         return response.text if hasattr(response, "text") else str(response)
     except Exception as e:
