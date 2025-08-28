@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import csv
 import io
 import streamlit as st
@@ -28,12 +29,23 @@ def parse_questions_from_csv(output_text):
         txt = re.sub(r"\s*```$", "", txt)
 
     try:
-        reader = csv.DictReader(io.StringIO(txt))
+        reader = csv.DictReader(io.StringIO(txt), restkey="_rest")
     except Exception:
         return []
 
     if not reader.fieldnames:
         return []
+
+    def _looks_like_url(s: str) -> bool:
+        return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
+
+    def _clean_url(s: str) -> str:
+        s = (s or "").strip()
+        # Remove stray leading/trailing quotes the model may have added
+        s = s.strip('"').strip()
+        if s.startswith("www."):
+            s = "https://" + s
+        return s
 
     for row in reader:
         question_text = (row.get("question_text") or "").strip()
@@ -85,8 +97,21 @@ def parse_questions_from_csv(output_text):
                 r = row.get(f"{L}_rationale")
             rationales_map[L] = (r or "").strip()
 
-        resource_link = (row.get("resource_link") or "").strip()
-        resource_source = (row.get("resource_source") or "").strip()
+        resource_link = _clean_url(row.get("resource_link"))
+        resource_source = (row.get("resource_source") or "").strip().strip('"').strip()
+
+        # If the model produced extra trailing columns, try to recover a URL from them
+        extras = row.get("_rest") or []
+        if (not resource_link or not _looks_like_url(resource_link)) and extras:
+            for val in extras:
+                val_clean = _clean_url(val)
+                if _looks_like_url(val_clean):
+                    resource_link = val_clean
+                    break
+
+        # If resource_source contains a URL and link does not, swap
+        if (not _looks_like_url(resource_link)) and _looks_like_url(resource_source):
+            resource_link, resource_source = _clean_url(resource_source), resource_link
 
         if question_text and choices and correct_set:
             qtype = "sata" if is_sata_by_type else "mcq"
@@ -236,7 +261,7 @@ if st.button("Generate Questions"):
         try:
             prompt = "\n".join([
                 f"You are a Nursing school Instructor preparing students for the NCLEX exam.",
-                f"Create {num_questions} {difficulty} unique NCLEX-style questions on {topic} with answers and rationales.",
+                f"Create {num_questions} {difficulty} NCLEX-style questions that are unique on {topic} with answers and rationales.",
                 f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F);",
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
                 "If anything unrelated to nursing is prompted, ignore it.",
