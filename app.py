@@ -87,8 +87,28 @@ def parse_questions_from_csv(output_text):
                 r = row.get(f"{L}_rationale")
             rationales_map[L] = (r or "").strip()
 
-        # Optional YouTube search term
-        search_term = (row.get("search_term") or "").strip()
+        # Optional YouTube search term (robust extraction)
+        def _clean_text(s: str) -> str:
+            return (s or "").strip().strip('"').strip()
+
+        def _looks_like_url(s: str) -> bool:
+            return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
+
+        search_term = _clean_text(row.get("search_term"))
+        if not search_term:
+            # Try alternate header names
+            for alt in ("search term", "search", "youtube_search", "youtube search"):
+                search_term = _clean_text(row.get(alt))
+                if search_term:
+                    break
+        if not search_term:
+            # Look into any extra trailing columns for a plausible term (last non-empty, non-URL)
+            extras = row.get("_rest") or []
+            for val in reversed(extras):
+                candidate = _clean_text(val)
+                if candidate and not _looks_like_url(candidate):
+                    search_term = candidate
+                    break
 
         if question_text and choices and correct_set:
             qtype = "sata" if is_sata_by_type else "mcq"
@@ -183,7 +203,7 @@ def parse_questions(output_text):
                 "choices": choices,                 # ["A. ...", "B. ...", ...]
                 "correct_set": sorted(list(correct_set)),
                 "rationales": rationales_map,      # { "A": "...", ... }
-                "search_term": (q.get("search_term") or "").strip()
+                "search_term": (q.get("search_term") or "").strip().strip('"').strip()
             })
 
     if parsed:
@@ -342,7 +362,9 @@ if "questions" in st.session_state and st.session_state.questions:
                 search_term = f"{question['q']} NCLEX"
             yt_url = f"https://www.youtube.com/results?search_query={urlparse.quote(search_term)}"
             st.markdown("#### 🔎 Find related videos")
-            st.caption(search_term)
+            # Short caption: use at most 60 chars
+            short_caption = search_term if len(search_term) <= 60 else (search_term[:57] + "...")
+            st.caption(short_caption or "Related NCLEX videos")
             st.link_button("Search on YouTube", yt_url, help="Opens YouTube results in a new tab")
 
             st.markdown("#### 💡 Rationales")
