@@ -297,7 +297,7 @@ if st.button("Generate Questions"):
                 `question_type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct_answer,correct_answers,rationale_a,rationale_b,rationale_c,rationale_d,rationale_e,rationale_f,youtube_search_term`
             3.  **Content Logic**:
                 * **Rationales**: Provide a concise and instructive rationale for **every** answer choice (both correct and incorrect).
-                * **YouTube Search Term**: For each question, provide a simple, 2-3 word search term for finding a relevant educational video.
+                * **YouTube Search Term**: For each question, provide a simple, 2-3 word search term for finding a relevant educational video that is related to the question and answer.
                 * **Correct Answer Columns (CRITICAL)**:
                     * For **MCQ** questions: Put the single correct letter in the `correct_answer` column. The `correct_answers` column MUST be blank.
                     * For **SATA** questions: Put the semicolon-separated list of correct letters (e.g., A;C;F) in the `correct_answers` column. The `correct_answer` column MUST be blank.
