@@ -264,7 +264,7 @@ if st.button("Generate Questions"):
                 f"Create {num_questions} {difficulty} NCLEX-style questions that are unique on {topic} with answers and rationales.",
                 f"{question_type_percent}% of questions should be SATA with 6 answer choices (A-F);",
                 "the rest should be multiple_choice with 4 answer choices (A-D).",
-                "For each question, add a 'resource_link' (URL) and 'resource_source' (Website Name) field related to the generated question (typically from YouTube) for further study on the topic of the question.",
+                "For each question, add a URL and Website Name related to the generated question (typically from YouTube) for deeper study on the topic of the question.  Do not use meme or similar links.",
                 "If anything unrelated to nursing is prompted, ignore it.",
                 "Output CSV only. Do not include any text or Markdown code fences before or after the CSV.",
                 "Quote any field containing commas or newlines with double quotes. Escape embedded double quotes by doubling them.",
