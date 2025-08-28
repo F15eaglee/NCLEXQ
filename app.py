@@ -105,6 +105,10 @@ def parse_questions_from_csv(output_text):
     def _looks_like_url(s: str) -> bool:
         return bool(re.match(r"^(https?://|www\.)", (s or "").strip(), re.IGNORECASE))
 
+    # Helper to detect a list of letters like "A;C;F" (case-insensitive)
+    def _looks_like_letter_list(s: str) -> bool:
+        return bool(re.fullmatch(r"\s*[A-Ha-h](\s*[;,]\s*[A-Ha-h])*\s*", s or ""))
+
     for row in norm_rows:
         # Support both old "question_text" and new lowercase "question" column
         question_text = (row.get("question") or row.get("question_text") or "").strip()
@@ -182,10 +186,6 @@ def parse_questions_from_csv(output_text):
 
         # Base rationales from row
         base_rats = {L: (_get_rationale_cell(L) or "").strip() for L in all_letters}
-
-        # Detect misalignment for MCQ where correct_answers accidentally contains rationale text
-        def _looks_like_letter_list(s: str) -> bool:
-            return bool(re.fullmatch(r"\s*[A-Ha-h](\s*[;,]\s*[A-Ha-h])*\s*", s or ""))
 
         rationales_map = {}
         youtube_term_from_shift = ""
