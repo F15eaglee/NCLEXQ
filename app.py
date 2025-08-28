@@ -248,7 +248,7 @@ if st.button("Generate Questions"):
                 "- For multiple_choice, set correct_answer to the single letter and leave correct_answers blank.",
                 "- For select_all_that_apply, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
                 "- Provide concise but instructive rationales for each option.",
-                "- Provide a scholarly youtube video hyperlink for resource_link related to the question and a human-readable source name as resource_source for each question."
+                "- Provide a scholarly youtube related to the question link for resource_link  and a human-readable source name as resource_source for each question."
             ])
 
             response = model.generate_content(prompt)
