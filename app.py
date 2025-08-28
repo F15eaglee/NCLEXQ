@@ -245,7 +245,7 @@ if st.button("Generate Questions"):
                 csv_examples,
                 "Guidance:",
                 "- For multiple_choice, set correct_answer to the single letter and leave correct_answers blank.",
-                "- For select_all_that_apply, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
+                "- For SATA, set correct_answers to a semicolon-separated list of letters (e.g., A;C;F) and leave correct_answer blank.",
                 "- Provide concise but instructive rationales for each option."
             ])
 
