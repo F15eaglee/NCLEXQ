@@ -383,8 +383,5 @@ if "questions" in st.session_state and st.session_state.questions:
 
         # Debug: raw output
         with st.expander("Show raw output"):
-            tokens = st.session_state.get("tokens", [])
-            tokeninput = tokenizer.encode(prompt)
-            tokenoutput = tokenizer.decode(output_text)
             lang = "csv" if st.session_state.get("raw_format") == "csv" else "json"
             st.code(st.session_state.get("raw_output", ""), language=lang)
