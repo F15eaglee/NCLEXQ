@@ -13,7 +13,7 @@ if not API_KEY:
     st.error("Missing API key. Add API_KEY to .streamlit/secrets.toml or set GOOGLE_API_KEY/API_KEY in env.")
     st.stop()
 genai.configure(api_key=API_KEY)
-MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash") 
 model = genai.GenerativeModel(MODEL_NAME)
 
 # --- Optimized Parsing Functions ---
@@ -345,7 +345,7 @@ if st.session_state.get("questions"):
             # YouTube link
             search_term = question.get("search_term", "").strip()
             if search_term:
-                yt_url = f"https://www.youtube.com/results?search_query={urlparse.quote(search_term)}"
+                yt_url = f"https://www.youtube.com/results?search_query=Nursing {urlparse.quote(search_term)}"
                 st.markdown("#### 🔎 Find related videos")
                 st.caption(search_term[:60])
                 st.link_button("Search on YouTube", yt_url)
