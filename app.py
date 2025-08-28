@@ -466,13 +466,21 @@ if "questions" in st.session_state and st.session_state.questions:
 
             # Navigation
             if q_index < len(st.session_state.questions) - 1:
-                if st.button("➡️ Next Question", key=f"next_{q_index}"):
+                if st.button("Next Question", key=f"next_{q_index}"):
                     st.session_state.q_index = q_index + 1
                     st.session_state.answered = False
                     st.session_state.selected_letters = []
                     st.rerun()
             else:
                 st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)}")
+
+        # Bottom fallback navigation (in case state glitches)
+        if q_index < len(st.session_state.questions) - 1 and st.session_state.scored_questions.get(q_index, False):
+            if st.button("Next Question", key=f"next_bottom_{q_index}"):
+                st.session_state.q_index = q_index + 1
+                st.session_state.answered = False
+                st.session_state.selected_letters = []
+                st.rerun()
 
         # Debug: raw output
         with st.expander("Show raw output"):
