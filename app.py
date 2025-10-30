@@ -274,40 +274,95 @@ def generate_questions(topic: str, difficulty: str, num_questions: int, question
         'SATA,"Select all initial nursing actions for suspected hypoglycemia.","Check blood glucose","Give long-acting insulin","Provide 15 g fast carbs","Reassess in 15 min","Call rapid response if LOC declines","Start IV access",,,"A;C;F","Confirms diagnosis","Contraindicated; will worsen","Raises glucose quickly","Ensures treatment worked","Escalate if worsening","Allows dextrose/med access","hypoglycemia care"',
     ])
 
-    prompt = f"""
-    # ROLE
-    You are an NCLEX Test Development Specialist. Generate high-quality NCLEX-style practice questions.
+    prompt = f"""# ROLE
+You are an NCLEX Test Development Specialist with expertise in nursing education and assessment design. Generate high-quality, clinically accurate NCLEX-style practice questions.
 
-    # TASK
-    Generate exactly {num_questions} questions on "{topic}" at {difficulty} difficulty.
+# TASK
+Generate exactly {num_questions} questions on "{topic}" at {difficulty} difficulty level.
 
-    # SPECIFICATIONS
-    - {question_type_percent}% SATA, rest MCQ.
-    - Focus on application, analysis, evaluation.
-    - MCQ: 4 choices (A-D). SATA: 6 choices (A-F).
-    - Provide concise rationales for all choices.
-    - Include a 2-3 word YouTube search term per question.
-    - Ensure complete rows; do not truncate output.
+# DIFFICULTY GUIDELINES
+- Easy: Recognition, basic concepts, standard procedures, common conditions
+- Medium: Application of knowledge, prioritization, multiple-step problems
+- Hard: Complex scenarios, atypical presentations, multiple comorbidities, critical thinking
 
-    # OUTPUT
-    - CSV only, no extra text, explanations, or code fences (e.g., ```csv).
-    - Header: {','.join(csv_examples.splitlines()[0].split(','))}
-    - MCQ: correct_answer (single letter A-D), correct_answers (blank).
-    - SATA: correct_answers (semicolon-separated, e.g., A;C;F), correct_answer (blank).
-    - For non-nursing topics, return only the header.
-    - Quote all fields to handle commas and ensure complete rows.
+# QUESTION TYPE DISTRIBUTION
+- {question_type_percent}% SATA (Select All That Apply), remainder MCQ (Multiple Choice)
+- MCQ: Exactly 4 choices (A-D) with ONE correct answer
+- SATA: Exactly 6 choices (A-F) with 2-4 correct answers
 
-    # EXAMPLES
-    {csv_examples}
-    """
+# CONTENT REQUIREMENTS
+1. **Clinical Realism**: Use realistic scenarios, current evidence-based practices (2020+)
+2. **Cognitive Level**: Focus on Application, Analysis, and Evaluation (avoid simple recall)
+3. **NCLEX Integration**: Incorporate nursing process, safety, ABC priority, therapeutic communication
+4. **Client-Centered**: Use "client" not "patient"; avoid judgmental language
+5. **Diversity**: Vary client ages, genders, conditions, and settings appropriately
+
+# DISTRACTOR QUALITY (Wrong Answers)
+- Must be plausible but clearly incorrect
+- Avoid obviously wrong or absurd options
+- Include common misconceptions or errors
+- No "all of the above" or "none of the above"
+
+# RATIONALE REQUIREMENTS
+Each rationale must be:
+- **Concise**: 10-25 words maximum
+- **Specific**: Explain WHY it's correct/incorrect
+- **Educational**: Teach the underlying principle
+- **Evidence-based**: Reference current nursing standards when relevant
+
+# YOUTUBE SEARCH OPTIMIZATION
+- Provide 2-4 words that yield quality nursing education videos
+- Format: "[Condition/Skill] nursing" or "[Topic] NCLEX"
+- Examples: "heart failure nursing", "insulin administration", "sepsis NCLEX"
+
+# OUTPUT FORMAT - CRITICAL
+1. **CSV ONLY** - No explanatory text, markdown, or code fences before/after
+2. **Complete Rows** - Every row must have all 17 columns filled (use empty quotes "" for blanks)
+3. **Proper Quoting**: 
+   - Quote ALL fields using double quotes
+   - Escape internal quotes by doubling them ("")
+   - Example: "The nurse says ""Take deep breaths"" to the client"
+4. **No Truncation** - Complete ALL {num_questions} questions fully
+5. **Header First** - Include header row as first line
+
+# COLUMN SPECIFICATION
+Header: {','.join(csv_examples.splitlines()[0].split(','))}
+
+For MCQ:
+- correct_answer: Single letter (A, B, C, or D)
+- correct_answers: Leave empty ("")
+
+For SATA:
+- correct_answer: Leave empty ("")
+- correct_answers: Semicolon-separated letters (e.g., "A;C;F")
+
+# VALIDATION CHECKLIST (Self-check before output)
+□ All {num_questions} questions complete
+□ Each MCQ has 4 options, each SATA has 6 options
+□ All rationales are 10-25 words
+□ No truncated rows or missing columns
+□ All fields properly quoted
+□ YouTube terms are 2-4 words
+□ Scenarios are clinically realistic
+
+# EXAMPLES
+{csv_examples}
+
+# IMPORTANT REMINDERS
+- For non-nursing topics, return ONLY the header row
+- Maintain consistent difficulty throughout
+- Ensure diverse question scenarios
+- Double-check CSV formatting before output
+"""
     try:
         response = model.generate_content(
             prompt,
             generation_config={
-                "max_output_tokens": 4096,  # Use a safe, realistic token limit
-                "temperature": 0.7,  # Balance creativity and consistency
-                "top_p": 0.9,
+                "max_output_tokens": 8192,  # Gemini 2.5 Flash supports up to 8192 output tokens
+                "temperature": 0.4,  # Lower temp for more consistent, accurate medical content
+                "top_p": 0.8,  # Slightly more focused sampling
                 "top_k": 40,
+                "candidate_count": 1,  # Single output for consistency
             }
         )
         return response.text if hasattr(response, "text") else str(response)
