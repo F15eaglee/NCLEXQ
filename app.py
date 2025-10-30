@@ -207,6 +207,29 @@ def parse_questions(output_text: str) -> tuple[list, str]:
         st.session_state["raw_format"] = "json"
     return parsed, error_msg
 
+# --- Initialize Session State ---
+def init_session_state():
+    """Initialize all session state variables with defaults."""
+    defaults = {
+        "questions": [],
+        "q_index": 0,
+        "answered": False,
+        "selected_letters": [],
+        "score": 0,
+        "scored_questions": {},
+        "raw_output": "",
+        "raw_format": "unknown",
+        "expected_count": 0,
+        "topic": "",
+        "difficulty": "",
+        "question_type_percent": "",
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+init_session_state()
+
 # --- Streamlit UI with Form ---
 st.title("🏥 NCLEX Smart Q&A Tutor 🏥")
 st.subheader("Developed by Glenn Heydolph ADN '26 DSC, BSN '27 UCF")
@@ -214,7 +237,7 @@ st.subheader("Developed by Glenn Heydolph ADN '26 DSC, BSN '27 UCF")
 with st.form("quiz_settings"):
     difficulty = st.selectbox("Select difficulty level:", ["Easy", "Medium", "Hard"])
     question_type_percent = st.selectbox("Select percentage of SATA Questions:", ["0", "25", "50", "75", "100"], index=2)
-    topic = st.text_input("Enter a topic:", "Heart Failure")
+    topic = st.text_input("Enter a topic:", "Heart Failure", help="Enter a nursing-related topic (e.g., Heart Failure, Diabetes, Wound Care)")
     num_questions = st.number_input("Number of questions:", min_value=1, max_value=20, value=2, step=1)
     submitted = st.form_submit_button("Generate Questions")
 
@@ -280,13 +303,37 @@ def generate_questions(topic: str, difficulty: str, num_questions: int, question
     try:
         response = model.generate_content(
             prompt,
-            generation_config={"max_output_tokens": 4096}  # Use a safe, realistic token limit
+            generation_config={
+                "max_output_tokens": 4096,  # Use a safe, realistic token limit
+                "temperature": 0.7,  # Balance creativity and consistency
+                "top_p": 0.9,
+                "top_k": 40,
+            }
         )
         return response.text if hasattr(response, "text") else str(response)
     except Exception as e:
-        return f"Error: {str(e)}"
+        error_msg = str(e)
+        # Provide more helpful error messages
+        if "quota" in error_msg.lower():
+            return "Error: API quota exceeded. Please check your Google AI Studio quota and try again later."
+        elif "invalid" in error_msg.lower() and "key" in error_msg.lower():
+            return "Error: Invalid API key. Please check your API_KEY in secrets.toml."
+        elif "blocked" in error_msg.lower():
+            return f"Error: Content was blocked by safety filters. Try a different topic. Details: {error_msg}"
+        else:
+            return f"Error: {error_msg}"
 
 if submitted:
+    # Validate topic input
+    if not topic or not topic.strip():
+        st.error("❌ Please enter a topic before generating questions.")
+        st.stop()
+    
+    # Store settings for "Generate more" functionality
+    st.session_state.topic = topic
+    st.session_state.difficulty = difficulty
+    st.session_state.question_type_percent = question_type_percent
+    
     with st.spinner("Generating questions..."):
         max_attempts = 3
         for attempt in range(max_attempts):
@@ -301,39 +348,53 @@ if submitted:
                     st.session_state.selected_letters = []
                     st.session_state.score = 0
                     st.session_state.scored_questions = {}
-                    st.session_state.raw_output = output_text[:1000]
+                    st.session_state.raw_output = output_text[:2000]  # Store more for debugging
                     st.session_state.expected_count = num_questions
                     if len(questions) < num_questions:
-                        st.warning(f"Only {len(questions)}/{num_questions} questions generated. Check debug output for details: {parse_error}")
+                        st.warning(f"⚠️ Only {len(questions)}/{num_questions} questions generated. Check debug output for details.")
                         if "Incomplete row" in parse_error and attempt < max_attempts - 1:
                             st.info(f"Retrying due to incomplete output (Attempt {attempt + 2}/{max_attempts})...")
                             continue
                     else:
-                        st.success(f"Generated {len(questions)} question(s).")
+                        st.success(f"✅ Successfully generated {len(questions)} question(s)!")
                     break
                 else:
                     st.error(f"❌ Could not parse questions (Attempt {attempt + 1}/{max_attempts}). Reason: {parse_error}")
-                    st.session_state.raw_output = output_text[:1000]
+                    st.session_state.raw_output = output_text[:2000]
                     if "Incomplete row" in parse_error and attempt < max_attempts - 1:
                         st.info(f"Retrying due to incomplete output (Attempt {attempt + 2}/{max_attempts})...")
                         continue
             except Exception as e:
-                st.error(f"❌ Generation error (Attempt {attempt + 1}/{max_attempts}): {str(e)}")
-                st.session_state.raw_output = str(e)
+                error_msg = str(e)
+                st.error(f"❌ Generation error (Attempt {attempt + 1}/{max_attempts}): {error_msg}")
+                st.session_state.raw_output = error_msg
+                # Check for rate limiting or quota errors
+                if "quota" in error_msg.lower() or "rate" in error_msg.lower():
+                    st.error("⚠️ API quota or rate limit exceeded. Please try again later.")
+                    break
         else:
-            st.error("❌ Failed to generate valid questions after retries.")
+            st.error("❌ Failed to generate valid questions after multiple retries. Please check your API key and try a different topic.")
 
 # --- Render Current Question ---
 if st.session_state.get("questions"):
     q_index = st.session_state.get("q_index", 0)
     if 0 <= q_index < len(st.session_state.questions):
         question = st.session_state.questions[q_index]
+        
+        # Progress bar
+        total_questions = len(st.session_state.questions)
+        progress = (q_index + 1) / total_questions
+        st.progress(progress, text=f"Question {q_index + 1} of {total_questions}")
+        
         st.markdown(f"### Question {q_index + 1}")
+        question_type_display = "📋 Select All That Apply (SATA)" if question["type"] == "sata" else "🔘 Multiple Choice"
+        st.caption(question_type_display)
         st.write(question["q"])
 
-        # Extract choices
-        letters_order = [m.group(1) for c in question["choices"] if (m := re.match(r"([A-Z])\.\s*(.*)", c))]
-        label_map = {m.group(1): m.group(2) for c in question["choices"] if (m := re.match(r"([A-Z])\.\s*(.*)", c))}
+        # Extract choices - Fix: Pre-compute matches to avoid walrus operator issues
+        choice_matches = [(re.match(r"([A-Z])\.\s*(.*)", c), c) for c in question["choices"]]
+        letters_order = [m.group(1) for m, c in choice_matches if m]
+        label_map = {m.group(1): m.group(2) for m, c in choice_matches if m}
 
         with st.form(f"question_{q_index}"):
             if question["type"] == "mcq":
@@ -380,55 +441,99 @@ if st.session_state.get("questions"):
                 expl = question["rationales"].get(L, "")
                 is_correct = L in question["correct_set"]
                 is_selected = L in st.session_state.selected_letters
-                box = st.success if is_correct and is_selected else st.info if is_correct else st.warning if is_selected else st.info
-                prefix = "✅ Correct" if is_correct and is_selected else "ℹ️ Correct (not selected)" if is_correct else "⚠️ Incorrect" if is_selected else "ℹ️ Not correct"
-                box(f"{L}. {label_map[L]}\n\n💡 {expl or 'No rationale provided.'}")
+                
+                # Determine styling based on correctness
+                if is_correct and is_selected:
+                    st.success(f"**{L}. {label_map[L]}**\n\n💡 {expl or 'No rationale provided.'}")
+                elif is_correct:
+                    st.info(f"**{L}. {label_map[L]}** _(Correct, not selected)_\n\n💡 {expl or 'No rationale provided.'}")
+                elif is_selected:
+                    st.error(f"**{L}. {label_map[L]}** _(Incorrect)_\n\n💡 {expl or 'No rationale provided.'}")
+                else:
+                    with st.expander(f"{L}. {label_map[L]}"):
+                        st.write(f"💡 {expl or 'No rationale provided.'}")
 
             st.write(f"📊 Score: {st.session_state.score}/{q_index + 1}")
 
             # Navigation
-            if q_index < len(st.session_state.questions) - 1:
-                if st.button("Next Question"):
-                    st.session_state.q_index += 1
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if q_index < len(st.session_state.questions) - 1:
+                    if st.button("➡️ Next Question", use_container_width=True):
+                        st.session_state.q_index += 1
+                        st.session_state.answered = False
+                        st.session_state.selected_letters = []
+                        st.rerun()
+                else:
+                    percentage = (st.session_state.score / len(st.session_state.questions)) * 100
+                    st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)} ({percentage:.1f}%)")
+            
+            with col2:
+                if st.button("🔄 Start New Quiz", use_container_width=True):
+                    # Clear quiz state but keep settings
+                    st.session_state.questions = []
+                    st.session_state.q_index = 0
                     st.session_state.answered = False
                     st.session_state.selected_letters = []
+                    st.session_state.score = 0
+                    st.session_state.scored_questions = {}
+                    st.session_state.expected_count = 0
                     st.rerun()
-            else:
-                st.success(f"🎉 Quiz complete! Final Score: {st.session_state.score}/{len(st.session_state.questions)}")
 
-        # Handle missing questions
+        # Handle missing questions - Fix: Use stored settings from session state
         total_q = len(st.session_state.questions)
         expected_q = st.session_state.get("expected_count", total_q)
         if total_q < expected_q:
             missing_q = expected_q - total_q
-            st.warning(f"Only {total_q}/{expected_q} questions generated.")
-            if st.button(f"Generate {missing_q} more"):
-                try:
-                    output_text = batched_generate_questions(topic, difficulty, missing_q, question_type_percent, batch_size=2)
-                    new_qs, parse_error = parse_questions(output_text)
-                    if new_qs:
-                        st.session_state.questions.extend(new_qs)
-                        st.success(f"Added {len(new_qs)} question(s).")
-                        st.rerun()
-                    else:
-                        st.error(f"Could not parse additional questions: {parse_error}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            st.warning(f"⚠️ Only {total_q}/{expected_q} questions generated.")
+            if st.button(f"Generate {missing_q} more question(s)"):
+                # Retrieve stored settings
+                stored_topic = st.session_state.get("topic", "")
+                stored_difficulty = st.session_state.get("difficulty", "Medium")
+                stored_percent = st.session_state.get("question_type_percent", "50")
+                
+                if not stored_topic:
+                    st.error("❌ Cannot generate more questions. Please start a new quiz.")
+                else:
+                    try:
+                        with st.spinner(f"Generating {missing_q} additional question(s)..."):
+                            output_text = batched_generate_questions(stored_topic, stored_difficulty, missing_q, stored_percent, batch_size=2)
+                            new_qs, parse_error = parse_questions(output_text)
+                            if new_qs:
+                                st.session_state.questions.extend(new_qs)
+                                st.session_state.expected_count = len(st.session_state.questions)
+                                st.success(f"✅ Added {len(new_qs)} question(s).")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Could not parse additional questions: {parse_error}")
+                    except Exception as e:
+                        st.error(f"❌ Error generating additional questions: {str(e)}")
 
 # --- Debug Tools ---
-if st.session_state.get("raw_output"):
-    with st.expander("Debug: Raw Output"):
-        st.write(f"Format: {st.session_state.get('raw_format', 'unknown')}")
-        st.code(st.session_state.raw_output, language=st.session_state.get("raw_format", "text"))
-        st.download_button("Download raw output", st.session_state.raw_output, file_name="raw_output.txt")
+st.divider()
+st.caption("🔧 Developer Tools")
 
-with st.expander("Debug: Test CSV Parser"):
-    sample_csv = st.text_area("Paste CSV here:", height=200)
-    if st.button("Parse CSV"):
+if st.session_state.get("raw_output"):
+    with st.expander("📋 Debug: Raw API Output"):
+        st.write(f"**Format:** {st.session_state.get('raw_format', 'unknown')}")
+        st.code(st.session_state.raw_output, language=st.session_state.get("raw_format", "text"))
+        st.download_button(
+            "⬇️ Download Raw Output", 
+            st.session_state.raw_output, 
+            file_name="raw_output.txt",
+            help="Download the raw API response for debugging"
+        )
+
+with st.expander("🧪 Debug: Test CSV Parser"):
+    st.info("Use this tool to test the CSV parser with your own data.")
+    sample_csv = st.text_area("Paste CSV here:", height=200, placeholder="Paste CSV formatted question data here...")
+    if st.button("Parse CSV", type="primary"):
         if sample_csv.strip():
             parsed, parse_error = parse_questions_from_csv(sample_csv)
-            st.write(f"Parsed {len(parsed)} question(s). Error: {parse_error}")
+            st.write(f"**Result:** Parsed {len(parsed)} question(s).")
+            if parse_error:
+                st.warning(f"**Parse Messages:** {parse_error}")
             if parsed:
                 st.json(parsed[0])
         else:
-            st.warning("Paste some CSV text.")
+            st.warning("⚠️ Please paste some CSV text first.")
