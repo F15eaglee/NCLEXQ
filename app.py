@@ -3,6 +3,7 @@ import re
 import json
 import csv
 import io
+import time
 import urllib.parse as urlparse
 import streamlit as st
 import google.generativeai as genai
@@ -33,7 +34,9 @@ def parse_questions_from_csv(output_text: str) -> tuple[list, str]:
         .replace("\u2019", "'")
         .replace("\xa0", " ")
     )
-    txt = re.sub(r"^```[a-zA-Z0-9\s]*\n|\n```$", "", txt)
+    match = re.search(r"```[a-zA-Z]*\n(.*?)```", txt, re.DOTALL)
+    if match:
+        txt = match.group(1).strip()
 
     # Find header
     expected_header = (
@@ -143,7 +146,8 @@ def parse_questions(output_text: str) -> tuple[list, str]:
         st.session_state["raw_format"] = "csv"
         return parsed, error_msg
 
-    txt = re.sub(r"^```[a-zA-Z0-9\s]*\n|\n```$", "", output_text.strip())
+    match = re.search(r"```[a-zA-Z]*\n(.*?)```", output_text.strip(), re.DOTALL)
+    txt = match.group(1).strip() if match else output_text.strip()
     try:
         data = json.loads(txt)
         if not isinstance(data, dict) or "questions" not in data:
@@ -243,30 +247,8 @@ with st.form("quiz_settings"):
 
 # --- Generate Questions ---
 
-# --- Batching logic for safe question generation ---
-def batched_generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str, batch_size: int = 2) -> str:
-    """Generate questions in batches to avoid model truncation, then merge CSVs."""
-    all_outputs = []
-    questions_remaining = num_questions
-    while questions_remaining > 0:
-        n = min(batch_size, questions_remaining)
-        generate_questions.clear()
-        out = generate_questions(topic, difficulty, n, question_type_percent)
-        all_outputs.append(out.strip())
-        questions_remaining -= n
-    # Remove duplicate headers, keep only the first
-    merged = []
-    for i, chunk in enumerate(all_outputs):
-        lines = chunk.splitlines()
-        if i == 0:
-            merged.extend(lines)
-        else:
-            merged.extend([l for l in lines if not l.lower().startswith("question_type,")])
-    return "\n".join(merged)
-
-# --- Original function, still cached for single batch ---
 @st.cache_data
-def generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str) -> str:
+def generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str, batch_id: int) -> str:
     """Cache the model response to avoid redundant API calls."""
     csv_examples = "\n".join([
         "question_type,question,option_a,option_b,option_c,option_d,option_e,option_f,correct_answer,correct_answers,rationale_a,rationale_b,rationale_c,rationale_d,rationale_e,rationale_f,youtube_search_term",
@@ -326,7 +308,7 @@ Each rationale must be:
 5. **Header First** - Include header row as first line
 
 # COLUMN SPECIFICATION
-Header: {','.join(csv_examples.splitlines()[0].split(','))}
+Header: {csv_examples.splitlines()[0]}
 
 For MCQ:
 - correct_answer: Single letter (A, B, C, or D)
@@ -378,6 +360,28 @@ For SATA:
         else:
             return f"Error: {error_msg}"
 
+# --- Batching logic for safe question generation ---
+def batched_generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str, batch_size: int = 2) -> str:
+    """Generate questions in batches to avoid model truncation, then merge CSVs."""
+    all_outputs = []
+    questions_remaining = num_questions
+    batch_idx = 0
+    while questions_remaining > 0:
+        n = min(batch_size, questions_remaining)
+        out = generate_questions(topic, difficulty, n, question_type_percent, batch_id=batch_idx)
+        all_outputs.append(out.strip())
+        questions_remaining -= n
+        batch_idx += 1
+    # Remove duplicate headers, keep only the first
+    merged = []
+    for i, chunk in enumerate(all_outputs):
+        lines = chunk.splitlines()
+        if i == 0:
+            merged.extend(lines)
+        else:
+            merged.extend([l for l in lines if not l.lower().startswith("question_type,")])
+    return "\n".join(merged)
+
 if submitted:
     # Validate topic input
     if not topic or not topic.strip():
@@ -409,6 +413,7 @@ if submitted:
                         st.warning(f"⚠️ Only {len(questions)}/{num_questions} questions generated. Check debug output for details.")
                         if "Incomplete row" in parse_error and attempt < max_attempts - 1:
                             st.info(f"Retrying due to incomplete output (Attempt {attempt + 2}/{max_attempts})...")
+                            time.sleep(2)
                             continue
                     else:
                         st.success(f"✅ Successfully generated {len(questions)} question(s)!")
@@ -418,6 +423,7 @@ if submitted:
                     st.session_state.raw_output = output_text[:2000]
                     if "Incomplete row" in parse_error and attempt < max_attempts - 1:
                         st.info(f"Retrying due to incomplete output (Attempt {attempt + 2}/{max_attempts})...")
+                        time.sleep(2)
                         continue
             except Exception as e:
                 error_msg = str(e)
