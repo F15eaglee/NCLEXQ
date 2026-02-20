@@ -182,7 +182,7 @@ You are an NCLEX Test Development Specialist. Generate exactly {num_questions} h
             return f"Error: {error_msg}"
 
 # --- Batching logic for safe question generation ---
-def batched_generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str, batch_size: int = 2) -> str:
+def batched_generate_questions(topic: str, difficulty: str, num_questions: int, question_type_percent: str, batch_size: int = 1) -> str:
     """Generate questions in batches, parsing and combining structured JSON objects."""
     all_questions = []
     questions_remaining = num_questions
@@ -224,7 +224,7 @@ if submitted:
         for attempt in range(max_attempts):
             try:
                 # Use batching to avoid truncation
-                output_text = batched_generate_questions(topic, difficulty, num_questions, question_type_percent, batch_size=2)
+                output_text = batched_generate_questions(topic, difficulty, num_questions, question_type_percent, batch_size=1)
                 questions, parse_error = parse_questions_from_json(output_text)
                 if questions:
                     st.session_state.questions = questions
@@ -383,7 +383,7 @@ if st.session_state.get("questions"):
                 else:
                     try:
                         with st.spinner(f"Generating {missing_q} additional question(s)..."):
-                            output_text = batched_generate_questions(stored_topic, stored_difficulty, missing_q, stored_percent, batch_size=2)
+                            output_text = batched_generate_questions(stored_topic, stored_difficulty, missing_q, stored_percent, batch_size=1)
                             new_qs, parse_error = parse_questions_from_json(output_text)
                             if new_qs:
                                 st.session_state.questions.extend(new_qs)
