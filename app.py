@@ -44,7 +44,6 @@ def parse_questions_from_json(output_text: str) -> tuple[list, str]:
         return [], f"Invalid JSON format: {str(e)}"
 
     parsed = []
-    all_letters = list("ABCDEF")
     skipped_reasons = []
     for q_idx, q in enumerate(data.get("questions", []), 1):
         question_text = q.get("question_text", "").strip()
@@ -52,7 +51,7 @@ def parse_questions_from_json(output_text: str) -> tuple[list, str]:
         qt_raw = q.get("question_type", "").lower()
         is_sata = qt_raw in {"sata", "select_all_that_apply", "select all that apply", "select_all", "select all that apply (sata)"} or isinstance(q.get("correct_answers"), list)
         
-        letters = [L for L in all_letters if L in options]
+        letters = sorted(list(options.keys()))
         choices = [f"{L}. {options[L]}" for L in letters]
         min_options = 6 if is_sata else 4
         if len(letters) < min_options:
