@@ -19,12 +19,16 @@ MODEL_NAME = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
 model = genai.GenerativeModel(MODEL_NAME)
 
 # --- Define Expected Output Schema ---
+class QuestionChoice(typing.TypedDict):
+    letter: str
+    text: str
+    rationale: str
+
 class QuestionResponse(typing.TypedDict):
     question_text: str
     question_type: str
-    options: dict[str, str]
+    choices: list[QuestionChoice]
     correct_answers: list[str]
-    rationales: dict[str, str]
     youtube_search_term: str
 
 class QuizOutput(typing.TypedDict):
@@ -49,19 +53,18 @@ def parse_questions_from_json(output_text: str) -> tuple[list, str]:
         question_text = q.get("question_text", "").strip()
         qt_raw = q.get("question_type", "").lower()
         is_sata = qt_raw in {"sata", "select_all_that_apply", "select all that apply", "select_all", "select all that apply (sata)"} or isinstance(q.get("correct_answers"), list)
-        options = q.get("options", {})
         
-        # Options can sometimes return as a list of dicts or standard dict
-        if isinstance(options, list):
-            # Flatten [{'A': '...'}] into {'A': '...'}
-            flat_opts = {}
-            for item in options:
-                if isinstance(item, dict):
-                    flat_opts.update(item)
-            options = flat_opts
+        choices_data = q.get("choices", [])
+        options_map = {}
+        rationales_map = {}
+        for c in choices_data:
+            let = c.get("letter", "").strip().upper()
+            if let:
+                options_map[let] = c.get("text", "").strip()
+                rationales_map[let] = c.get("rationale", "").strip()
 
-        letters = sorted(list(options.keys()))
-        choices = [f"{L}. {options[L]}" for L in letters]
+        letters = sorted(list(options_map.keys()))
+        choices = [f"{L}. {options_map[L]}" for L in letters]
         min_options = 6 if is_sata else 4
         if len(letters) < min_options:
             skipped_reasons.append(f"Question {q_idx}: Required {min_options} options, found {len(letters)}")
@@ -76,8 +79,6 @@ def parse_questions_from_json(output_text: str) -> tuple[list, str]:
         if not correct_set:
             skipped_reasons.append(f"Question {q_idx}: No valid correct_answers")
             continue
-
-        rationales_map = {L: q.get("rationales", {}).get(L, "") for L in letters}
 
         if question_text and choices and correct_set:
             parsed.append({
@@ -156,9 +157,8 @@ You are an NCLEX Test Development Specialist. Generate exactly {num_questions} h
 - YouTube Keyword: Provide 2-4 words that yield quality nursing education videos (e.g., "heart failure nursing").
 - Data Formatting:
     - `question_type` must be "mcq" or "sata"
-    - `options` should map the choice letter to its text (e.g., {{"A": "Option text"}})
+    - `choices` must be a list of objects, each containing a `letter` (A, B, C, etc.), `text` (the option text), and `rationale` (explanation for this option).
     - `correct_answers` should be a list of correct letters (e.g., ["A", "C"])
-    - `rationales` should map the option letter to its explanation
 """
     try:
         response = model.generate_content(
